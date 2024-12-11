@@ -3,7 +3,7 @@
 ## Introduction
 This workshop introduces the various features and functionality of Oracle Key Vault (OKV) to be used on Exadata Cloud at Customer (ExaCC). It gives the user an opportunity to learn how to configure this appliance to manage keys.
 
-*Estimated Lab Time:* 60 minutes.
+*Estimated Lab Time:* 60 minutes
 
 *Version tested in this lab:* Oracle OKV 21.9 and DBEE 19.23
 
