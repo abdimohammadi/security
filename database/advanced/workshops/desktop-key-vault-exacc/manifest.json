@@ -6,7 +6,7 @@
       "title": "Introduction",
       "description": "Understand the architecture of this workshop and what it can do",
       "publisheddate": "09/01/2020",
-      "filename": "../../intro/intro-key-vault.md"
+      "filename": "../../intro/intro-key-vault-exacc.md"
     },
     {
       "title": "Get Started",
@@ -20,10 +20,10 @@
       "filename": "../../../common/init-start-env/init-start-env-dbs.md"
     },
     {
-      "title": "Lab 2: Key Vault (OKV)",
-      "description": "In this lab you can see how to leverage Oracle Key Vault (OKV)",
+      "title": "Lab 2: Key Vault (OKV) for Exa",
+      "description": "In this lab you can see how to leverage Oracle Key Vault (OKV) For ExaCC",
       "publisheddate": "10/20/2020",
-      "filename": "../../key-vault/key-vault.md",
+      "filename": "../../key-vault-exacc/key-vault-exacc.md",
       "type": "green"
     },
     {
