@@ -35,32 +35,24 @@ This lab assumes you have:
 <if type="brown">
 | Task No. | Feature                                           | Approx. Time | Details                                                                    |
 | -------- | ------------------------------------------------- | ------------ | -------------------------------------------------------------------------- |
-| 1        | Encrypt database with TDE                         | <10 minutes  |                                                                            |
-| 2        | Add an Endpoint                                   | <10 minutes  |                                                                            |
-| 3        | View the Contents of the OKV Virtual Wallet       | <5 minutes   |                                                                            |
-| 4        | Upload current and retired TDE master keys to OKV | 5 minutes    | To backup the Oracle Wallet into Oracle Key Vault                          |
-| 5        | Migrate to Online Master Key                      | 5 minutes    | To re-configure the database to communicate directly with Oracle Key Vault |
-| 6        | Create the OKV SEPS Wallet                        | <5 minutes   |                                                                            |
-| 7        | Perform a ReKey Operation                         | 5 minutes    |                                                                            |
-| 8        | Secret Management with OKV                        | 5 minutes    |                                                                            |
-| 9        | Generate New Non-extractable Key                  | 5 minutes    |                                                                            |
-| 10       | Reset the OKV Lab Config                          | <5 minutes   |                                                                            |
+| 1        | Setup OKV 29.10 from OCI Marketplace              | <10 minutes  |                                                                            |
+| 2        | Create REST API Admin & Enable REST API           | <10 minutes  |                                                                            |
+| 3        | Create an OCI Vault with a MEK & Secret           | 15 minutes   |                                                                            |
+| 4        | Change Database TDE MEK from OMK to CML (OKV)     | 15 minutes   |                                                                            |
+| 5        | Review OKV Vaults and Keys                        | 10 Minutes   |                                                                            |
+| 6        | Reset the OKV Lab Config                          | <5 minutes   |                                                                            |
 </if>
 <if type="green">
 | Task No. | Feature                                           | Approx. Time | Details                                                                    |
 | -------- | ------------------------------------------------- | ------------ | -------------------------------------------------------------------------- |
-| 1        | Encrypt database with TDE                         | <10 minutes  |                                                                            |
-| 2        | Add an Endpoint                                   | <10 minutes  |                                                                            |
-| 3        | View the Contents of the OKV Virtual Wallet       | <5 minutes   |                                                                            |
-| 4        | Upload current and retired TDE master keys to OKV | 5 minutes    | To backup the Oracle Wallet into Oracle Key Vault                          |
-| 5        | Migrate to Online Master Key                      | 5 minutes    | To re-configure the database to communicate directly with Oracle Key Vault |
-| 6        | Create the OKV SEPS Wallet                        | <5 minutes   |                                                                            |
-| 7        | Perform a ReKey Operation                         | 5 minutes    |                                                                            |
-| 8        | Secret Management with OKV                        | 5 minutes    |                                                                            |
-| 9        | Generate New Non-extractable Key                  | 5 minutes    |                                                                            |
+| 1        | Create REST API Admin & Enable REST API           | <10 minutes  |                                                                            |
+| 2        | Create an OCI Vault with a MEK & Secret           | 15 minutes   |                                                                            |
+| 3        | Change Database TDE MEK from OMK to CML (OKV)     | 15 minutes   |                                                                            |
+| 4        | Review OKV Vaults and Keys                        | 10 Minutes   |                                                                            |
+| 5       | Reset the OKV Lab Config                          | <5 minutes   |                                                                            |
 </if>
 
-## Task 1: Encrypt database with TDE
+## Task 1: Setup OKV 29.10 from OCI Marketplace
 
 To enable you to learn about Oracle Key Vault for TDE key management, you need an encrypted database:
 
@@ -71,14 +63,11 @@ To enable you to learn about Oracle Key Vault for TDE key management, you need a
     <copy>sudo su - oracle</copy>
     ````
 </if>
-<if type="green">
-    **Note**: Double-click on the Terminal icon on the desktop to launch a session directly as oracle
-</if>
 
-2. Go to the TDE scripts directory
+2. Create REST API Admin & Enable REST API
 
     ````
-    <copy>cd $DBSEC_LABS/tde</copy>
+    <copy>TBD</copy>
     ````
 
 <!--
