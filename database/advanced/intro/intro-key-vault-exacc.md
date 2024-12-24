@@ -15,21 +15,18 @@ The complete architecture of the **DB Security Hands-On Labs** is as following:
 
   ![DBSec LiveLabs Archi](./images/dbseclab-archi.png "DBSec LiveLabs Archi")
 
-It's composed of 5 VMs:
-  - **DBSec-Lab VM** (mandatory for all workshops: Baseline and Advanced workshops)
-  - **Audit Vault Server VM** (for Advanced workshop only)
-  - **DB Firewall Server VM** (for Advanced workshop only)
+It's composed of 1 VM and one ExaCC VMcluster with at least 1 database:
   - **Key Vault Server VM** (for Advanced workshop only)
-  - **DB23ai VM** (for SQL Firewall workshop only)
 
 During this mini-lab, you'll use different resources to interact with these VMs:
   - SSH Terminal Client
   - Oracle Key Vault Web Console
+  - Oracle OCI for multiple resources such as IAM , Keystore, Vault Keys & Secrets and also ExaCC VMCluster Console
 
 So that your experience of this workshop is the best possible, DO NOT FORGET to perform "Lab: *Initialize Environment*" to be sure that all these resources are correctly set!
 
 ### Objectives
-This Hands-On Labs give the user an opportunity to learn how to configure the DB Security features to protect and secure their databases from the Baseline to the Maximum Security Architecture (MSA).
+This Hands-On Labs give the user an opportunity to learn how to configure the ExaCC databases to leverage OKV for TDE .
 
 In this mini-lab, you will learn how to use the **Oracle Key Vault** (OKV) on Exadata Cloud at Customer (ExaCC).
 
@@ -39,5 +36,5 @@ You may now [proceed to the next lab](#next).
 
 ## Acknowledgements
 - **Author** - Abdi Mohammadi, Master Principal Cloud Architect 
-- **Contributors** - ???
-- **Last Updated By/Date** - ???
+- **Contributors** - N/A
+- **Last Updated By/Date** - 12/23/2024
