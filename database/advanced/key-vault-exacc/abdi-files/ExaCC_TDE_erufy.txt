@@ -1,0 +1,175 @@
+[oracle@ecc4c2n3 ~]$ cd /var/opt/oracle/dbaas_acfs/p2Db0/
+[oracle@ecc4c2n3 p2Db0]$ ls -l
+total 9860
+-rw-r--r-- 1 oracle oinstall      58 Dec 18 16:01 bc7b76ef-f723-4562-8a6e-458ca2115119.rec
+drwx------ 2 oracle oinstall   20480 Dec 18 16:03 bkup
+drwxr-xr-x 2 oracle oinstall   20480 Dec 18 16:02 db_wallet
+drwxr-xr-x 5 oracle oinstall   20480 Dec 23 16:22 okv_rest_cli
+-rw-r--r-- 1 root   root     7957325 Dec 23 12:49 okv_rest_cli.tgz
+drwxr-x--- 3 oracle oinstall   20480 Dec 18 16:15 opc
+drwxr-x--- 4 oracle oinstall   20480 Dec 23 16:17 wallet_root
+
+
+[oracle@ecc4c2n3 ~]$ ls -l $ORACLE_BASE/admin/p2Db0/
+total 12
+drwxr-xr-x 2 oracle oinstall 4096 Dec 24 15:15 db_wallet
+drwxr-xr-x 3 oracle oinstall 4096 Dec 23 16:16 okv_home
+drwxr-xr-x 3 oracle oinstall 4096 Dec 18 16:15 tde_wallet
+
+
+
+
+[oracle@ecc4c2n3 conf]$ sqlplus / as sysdba
+SQL> SELECT WALLET_TYPE FROM V$ENCRYPTION_WALLET;
+
+WALLET_TYPE
+--------------------
+AUTOLOGIN
+OKV
+AUTOLOGIN
+OKV
+AUTOLOGIN
+OKV
+
+6 rows selected.
+
+
+
+SQL> SELECT * FROM V$ENCRYPTION_WALLET;
+
+WRL_TYPE
+--------------------
+WRL_PARAMETER
+--------------------------------------------------------------------------------
+STATUS			       WALLET_TYPE	    WALLET_OR KEYSTORE FULLY_BAC
+------------------------------ -------------------- --------- -------- ---------
+    CON_ID
+----------
+FILE
+/var/opt/oracle/dbaas_acfs/p2Db0/wallet_root/tde/
+OPEN			       AUTOLOGIN	    SECONDARY NONE     YES
+	 1
+
+
+WRL_TYPE
+--------------------
+WRL_PARAMETER
+--------------------------------------------------------------------------------
+STATUS			       WALLET_TYPE	    WALLET_OR KEYSTORE FULLY_BAC
+------------------------------ -------------------- --------- -------- ---------
+    CON_ID
+----------
+OKV
+
+OPEN			       OKV		    PRIMARY   NONE     UNDEFINED
+	 1
+
+
+WRL_TYPE
+--------------------
+WRL_PARAMETER
+--------------------------------------------------------------------------------
+STATUS			       WALLET_TYPE	    WALLET_OR KEYSTORE FULLY_BAC
+------------------------------ -------------------- --------- -------- ---------
+    CON_ID
+----------
+FILE
+
+OPEN			       AUTOLOGIN	    SINGLE    UNITED   YES
+	 2
+
+
+WRL_TYPE
+--------------------
+WRL_PARAMETER
+--------------------------------------------------------------------------------
+STATUS			       WALLET_TYPE	    WALLET_OR KEYSTORE FULLY_BAC
+------------------------------ -------------------- --------- -------- ---------
+    CON_ID
+----------
+OKV
+
+OPEN			       OKV		    SINGLE    UNITED   UNDEFINED
+	 2
+
+
+WRL_TYPE
+--------------------
+WRL_PARAMETER
+--------------------------------------------------------------------------------
+STATUS			       WALLET_TYPE	    WALLET_OR KEYSTORE FULLY_BAC
+------------------------------ -------------------- --------- -------- ---------
+    CON_ID
+----------
+FILE
+
+OPEN			       AUTOLOGIN	    SECONDARY UNITED   YES
+	 3
+
+
+WRL_TYPE
+--------------------
+WRL_PARAMETER
+--------------------------------------------------------------------------------
+STATUS			       WALLET_TYPE	    WALLET_OR KEYSTORE FULLY_BAC
+------------------------------ -------------------- --------- -------- ---------
+    CON_ID
+----------
+OKV
+
+OPEN			       OKV		    PRIMARY   UNITED   UNDEFINED
+	 3
+
+
+6 rows selected.
+
+SQL>  SHOW PARAMETER WALLET;
+
+NAME				     TYPE	 VALUE
+------------------------------------ ----------- ------------------------------
+ssl_wallet			     string
+wallet_root			     string	 /var/opt/oracle/dbaas_acfs/p2D
+						 b0/wallet_root
+
+
+SQL> SELECT 
+    STATUS AS "Wallet Status", 
+    WALLET_TYPE AS "Wallet Type", 
+    WRL_TYPE AS "Wallet Location Type", 
+    WRL_PARAMETER AS "Wallet Directory"  2    3    4    5  
+  6  FROM 
+    V$ENCRYPTION_WALLET;  7  
+
+Wallet Status		       Wallet Type	    Wallet Location Type
+------------------------------ -------------------- --------------------
+Wallet Directory
+--------------------------------------------------------------------------------
+OPEN			       AUTOLOGIN	    FILE
+/var/opt/oracle/dbaas_acfs/p2Db0/wallet_root/tde/
+
+OPEN			       OKV		    OKV
+
+
+OPEN			       AUTOLOGIN	    FILE
+
+
+
+Wallet Status		       Wallet Type	    Wallet Location Type
+------------------------------ -------------------- --------------------
+Wallet Directory
+--------------------------------------------------------------------------------
+OPEN			       OKV		    OKV
+
+
+OPEN			       AUTOLOGIN	    FILE
+
+
+OPEN			       OKV		    OKV
+
+
+
+6 rows selected.
+
+SQL> 
+
+
