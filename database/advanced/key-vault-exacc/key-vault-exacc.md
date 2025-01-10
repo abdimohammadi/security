@@ -124,20 +124,19 @@ The Value of the Secret has to be the password of the OKV REST API User
 
 ## Task 4: Create an OCI dynamic group and policy for ExaCC
 
-A dynamic group "okv_dg" and related OCI IAM policy "okv-policy" needs to be created for Databases which need to connect to OKV 
+A dynamic group "okv_dg" and related OCI IAM policy "okv-policy" needs to be created for Databases which need to connect to OKV
 
     ````
-    <copy>okv_dg:<copy>
-    <copy>resource.compartment.id = 'ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq'<copy>	
- .  ````
-
+    <copy>okv_dg:</copy>
+    <copy>resource.compartment.id = 'ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq'</copy>
+    ````
 
     ````
-    <copy>okv-policy<copy>y
-    <copy>Allow group okv_dg to use secret-family in compartment id ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq<copy>
-    <copy>Allow group id ocid1.dynamicgroup.oc1..aaaaaaaayx6kuax6kfqp7uvdsz47rvoznewog5t7ttwzm6ukcr5qlsj52keq to use keystores in compartment id ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq<copy>
-    <copy>Allow service database to read secret-family in compartment id ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq<copy>
-     ```` 
+    <copy>okv-policy
+    Allow group okv_dg to use secret-family in compartment id ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq
+    Allow group id ocid1.dynamicgroup.oc1..aaaaaaaayx6kuax6kfqp7uvdsz47rvoznewog5t7ttwzm6ukcr5qlsj52keq to use keystores in compartment id ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq
+    Allow service database to read secret-family in compartment id ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq</copy>
+    ````
 
 
 ## Task 5: Create a ExaCC Keystore to refer to OCI Vault
