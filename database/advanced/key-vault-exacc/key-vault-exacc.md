@@ -127,8 +127,8 @@ The Value of the Secret has to be the password of the OKV REST API User
 A dynamic group "okv_dg" and related OCI IAM policy "okv-policy" needs to be created for Databases which need to connect to OKV
 
     ````
-    <copy>okv_dg:</copy>
-    <copy>resource.compartment.id = 'ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq'</copy>
+    <copy>okv_dg:
+    resource.compartment.id = 'ocid1.compartment.oc1..aaaaaaaagss7aepalgfhz46gpjgnc6x2rj4fevunhojbk77a5nholhdlliaq'</copy>
     ````
 
     ````
