@@ -1,0 +1,4129 @@
+#!/usr/bin/perl
+ 
+# $Header: dbaas/opc/tools/ocde/assistants/bkup/obkup /main/327 2024/02/02 21:13:56 ararrodr Exp $
+#
+# obkup
+#
+# Copyright (c) 2014, 2024, Oracle and/or its affiliates. 
+#
+#    NAME
+#      obkup - InstantiateCONFIGUREexecuter for the current backup policy
+#
+#    DESCRIPTION
+#      Supports incrementals backups and also using bkup.pm module forever keep backups
+#
+#
+#    NOTES
+#      Options
+#          obkup <mode> # mode is optional , by default it takes an incremental backup
+#          eg:
+#             obkup
+#             obkup cat_status
+#             obkup help
+#             obkup keep tag  "firstbackup"
+#             obkup keep list
+#
+#    MODIFIED   (MM/DD/YY)
+#    ararrodr    02/02/24  - Add not backed up to archivelog command.
+#    mkandarp    11/17/23  - Bug 36018216: Not to allocate disk channel for
+#                            datafile backup operation
+#    ogallego    10/09/23  - Fix 35859752: Use mountpoint in all nfs formats
+#    mkandarp    09/19/23  - Bug 35806708: Cleanup oh/os cfg tarballs for NFS
+#                            backups
+#    mkandarp    07/07/23  - Bug 35576227: Fix disk backup recovery window
+#    mkandarp    06/19/23  - Bug 35459591: filesperset for datafile backup
+#    mkandarp    06/16/23  - Bug 35469476: Archive log backup/cleanup on
+#                            standby
+#    ogallego    04/19/23  - 35285259: Force tde wallet backup if dbcfg is
+#                            gone
+#    bamancha    04/04/23  - RE-ENABLE AUTO BACKUP IS FAILING
+#    mkandarp    03/31/23  - Bug 35246185: Backup datafiles and channels
+#    mmahawar    03/30/23  - exacs-109012: Allow archivelog backups on standby
+#                            if there is a destination configured on ExaCS
+#    ogallego    03/27/23  - Bug 35199660: Do clean up only when operation
+#                            comes from cron, If not, take regular backup
+#    mkandarp    03/23/23  - Bug 35214262: Parameterize filesperset
+#    mkandarp    03/17/23  - Bug 35176583: Backup datafiles to use incremental
+#                            strategy
+#    ogallego    02/07/23  - Fix 35056195: Reorder tar commands for OL8
+#    mkandarp    12/07/22  - Bug 34873016: Add filesperset for OSS backups
+#    mmahawar    11/04/22  - exacs-99933: Delete obsolete support
+#    mkandarp    10/18/22  - Bug 34716016: After datafile backup, do not for
+#                            Level0
+#    mmahawar    10/17/22  - EXACS-98905: Run archivelog backup only when
+#                            bkup_cron_entry=yes
+#    davjimen    09/21/22  - Bug 34460579 - remove HiRes dependency
+#    mkandarp    09/01/22  - Bug 34199524: AL compression
+#    prmatta     08/11/22  - from main
+#    prmatta     08/05/22  - Bug 33811905 - OCI / EXACS AUTOMATED BACKUP FAILED
+#                            DUE TO AN UPLOAD FAILURE
+#    mkandarp    07/12/22  - Bug 34255898: Restore validate missing datafiles
+#    mmahawar    06/13/22  - bug-34259366: Delete obsolete post L0 and L1
+#                            backups
+#    mmahawar    06/03/22  - Bug 34224822: Backup controlfile during transition
+#    gagagarw    05/20/22 -  34193737 - BKUP_API LIST_JOBS SHOWING ARCHIVELOG-BACKUP 
+#    			    JOB FAILED WITH RMAN ERROR FOR 11.2 DATABASE
+#    mmahawar    05/17/22 - Enable archivelog backup with rtrt
+#    mmahawar    05/16/22 - Archivelog and incremental backups during
+#                           transition
+#    mkandarp    04/29/22 - Bug 34105855: Add rmanArchiveLogChannels
+#    ogallego    04/27/22 - ER 34020292: Change backup to unavailable
+#    ogallego    03/29/22 - ER 33997600: Add rmanOptimization=off on demand
+#    ogallego    03/24/22 - Bug 33998709: Intermitent ORA-28365: WALLET IS NOT
+#                           OPEN DURING BACKUP EXECUTION
+#    gagagarw    02/09/22 - 33800666 - dbhome backuppurge failure
+#    mkandarp    02/04/22 - Bug 33802072: Exclude lck files in tarballs
+#    mmahawar    01/24/22 - change in dbrs tns alias
+#    mmahawar    01/12/22 - Support of separate tde backup
+#    mmahawar    01/05/22 - bug 33723919: dynamic channel allocation for
+#                           restore preview
+#    mkandarp    12/11/21 - Bug 33641764: RMAN-6054 IS RAISED WHILE RUNNING
+#                           RECOVER DATABASE UNTIL TIME
+#    migurodr    11/19/21 - Bug-33530980: Add support to execute Level0 backups
+#                           for pdbs.
+#    mkandarp    10/26/21 - ER 28411482: AL retention
+#    ogallego    10/25/21 - ER 33418704: DBRS support
+#    ogallego    09/24/21 - 33395413: Avoid collision on list.txt
+#    migurodr    09/15/21 - Bug-33354014: Delete obsolete backup with L0 only.
+#    mkandarp    09/08/21 - Bug 33329028: Check for 0 Completed jobs
+#    mmahawar    09/03/21 - bug 33295312: Prevent deletion of longterm tde
+#                           backups
+#    migurodr    08/06/21 - Bug-32906734: change bkup_oss_l0_day to bkup_l0_day
+#                           variable.
+#    bamancha    06/17/21 - ##EXACS-67456 - ALLOW BKUP_CHANNELS_NODE
+#                           MODIFICATION IN BACKUP CONFIG DURING ONGOING BACKUP
+#    mmahawar    05/20/21 - Bug 32827158: Custom tag for longterm not to be
+#                           appended with timestamp
+#    mkandarp    05/11/21 - Bug 32873563: Allocate channels for DISK AL backup
+#    mkandarp    05/04/21 - Bug 32837199: AL for DISK only backups
+#    mmahawar    04/27/21 - Longterm backup failure
+#    mkandarp    04/14/21 - 32769388: dbhome purge only for OSS backups
+#    bamancha    03/25/21 - Install ONSR OSS PKI certs
+#    cmarisca    03/24/21 - 32180240: remove tde wallet password validation
+#                           from backup execution
+#    cmarisca    03/11/21 - Bug 32386111 - ADB-D : CONFIG FILES BACKUP TO NFS
+#                           AS AN ALTERNATE DESTINATION CUSTOM SPEC FOR ADB
+#    cmarisca    02/26/21 - 31697576 - ADD RETRY LOGIC TO VALIDATE OSS
+#                           CONNECTIVITY BEFORE BACKUP EXECUTION
+#    ajadams     02/09/21 - bug-32485606: tfa alert if pdb needs media recovery
+#    saromer     02/09/21 - Drop cns usage
+#    mkandarp    01/27/21 - Bug 32381257: Wallet backup for ADB
+#    mkandarp    01/24/21 - Bug 32398058: backup current control file
+#    cmarisca    01/07/21 - 32071819: ZDLRA SUPPORT L0 BACKUPS
+#    mkandarp    01/05/21 - Bug 32284807: PDB backup AL log clause modification
+#    ogallego    12/10/20 - Bug 32074092: oss cfg file removal causing fork
+#                           bomb
+#    jpizana     12/01/20 - Real Time Redo Transport option
+#    bamancha    11/17/20 - Disable Restore preview for ZDLRA
+#    saromer     11/13/20 - Add bundled_perllibs as first element of includes
+#    mkandarp    11/04/20 - Bug 32094903: ALL backup bypass redo log switch
+#    mkandarp    11/02/20 - Bug 31909971: Pass backtype to channel allocation
+#    mkandarp    10/04/20 - Bug 31199935: Allocate channels for longterm backup
+#    cmarisca    09/29/20 - 31970420: enforce tde wallet backup using always tde_ks_loc
+#    mkandarp    09/11/20 - Bug 31861841: LT backup TAG
+#    cmarisca    09/06/20 - 31844589: retry bkup on kbhs errors.
+#    mkandarp    08/03/20 - Bug 31700613: config error and list backups
+#    mkandarp    07/27/20 - tde wallet backup not needed for AL job
+#    ogallego    06/24/20 - ER ADBD-13210: Support timestamp in restore
+#                           valdiate
+#    andeleon    06/03/20 - Fix for exacs-41201.
+#    jricoir     05/29/20 - Bug 31407552: Mount point and nasLocation changes
+#    mmahawar    05/19/20 - log file name display on terminal
+#    cmarisca    05/05/20 - 31151841: adding validation to avoid executing
+#                           longterm backups when bkup_type is disk.
+#    mkandarp    05/01/20 - Bug 31264394: Get rman sessions only for ATP
+#    mkandarp    04/22/20 - Bug 31215373: One daily log for AL jobs
+#    mkandarp    04/21/20 - Bug 31207489: pass logger to creg
+#    mmahawar    04/21/20 - Bug 31186951: Correcting pathprovider syntax
+#    aliarias    04/16/20 - EXACS-36456 - Backup post TDE migration should be
+#                           Level 0 and with optimization off.
+#    andeleon    04/15/20 - Fix for 31038545
+#    aliarias    04/09/20 - Store KMS KeyId/OCID in backup report
+#    mmahawar    04/08/20 - Bug 29657771: Standalone arvchivelog to
+#                           contain 'Auto_Archive' in format
+#    cmarisca    04/08/20 - 31147314: creating nfs folder as oracle:oinstall
+#                           and 755.
+#    cmarisca    04/07/20 - 31134525: avoid running config files backup flow
+#                           for zdlra backups.
+#    psainza     04/01/20 - Bug 31113126: Error IDs correction after bad merge
+#                           on main/8
+#    mkandarp    03/30/20 - Bug 31096855: Long term backup, custom tag and cfg
+#                           files
+#    cmarisca    03/30/20 - 31072357: running tde->bkup_ks to ensure
+#                           config tarball will contain correct tde wallet
+#                           backup.
+#    aoruiz      03/23/20 - Bug 31070220: Validate chown.
+#    ogallego    03/19/20 - 31057311: Enable backups on standby
+#    ogallego    02/20/20 - XbranchMerge ogallego_bug-30802768_19.4.4.2.0_2
+#                           from st_dbaas_19.4.4.0.0
+#    ogallego    02/17/20 - XbranchMerge ogallego_bug-30871003_19.4.4.2.0 from
+#                           st_dbaas_19.4.4.0.0
+#    ogallego    02/11/20 - XbranchMerge ogallego_bug-30802768 from
+#                           st_dbaas_19.4.4.0.0
+#    aoruiz      02/10/20 - Bug 30879429 Wrong directory permissions.
+#    aoruiz      02/06/20 - Bug-30861315 Call OSS as oracle.
+#    aoruiz      01/29/20 - NFS permissions EXACS-31791.
+#    vidsunda    01/27/20 - Bug 28482725 - bkup_archlogs to cleanup applied
+#                           archives in standby
+#    vidsunda    01/27/20 - Bug 30812997 - Dump command-line args
+#    mmahawar    01/26/20 - Bug 30804423: Remove_motd_msg non-existence not. So
+#                           removing it from nfs backup
+#    swmuruga    01/24/20 - 30771161 - IN-VM CONFIG CHANGES TO SUPPORT DB 20C
+#    vidsunda    01/03/20 - Bug 30715518 - Fix logging and error scan for longterm backup
+#    vidsunda    12/31/19 - Bug 30607599 - Fix Backup Tag Fetch SQL
+#    mkandarp    12/28/19 - Bug 30666628: level1 flag
+#    aliarias    12/06/19 - Bug 30606168 - EXACS:19.4.4-NON-ATP:CREATE DB FROM
+#                           BACKUP FAILS(ERROR: IBKUP FAILED UNEXPECTED ERROR:
+#                           CHK_PASSWD_IN_DBAGENT_WALLET: UNDEFINED PASSWD
+#                           REFERENCE)
+#    mkandarp    12/03/19 - Bug 30431859: Add prefix for oss listing
+#    vidsunda    11/07/19 - Bug 30310439 - Mark Backup Jobs Success for RMAN Jobs
+#    mkandarp    10/30/19 - Bug 30445476: Not open PDBs
+#    rdelapen    10/18/19 - Bug 29709489 - ATP: HIT ERROR 'THE BACKUP COMPLETED
+#                           BUT NO RMAN HANDLE' WHEN TO TAKE PDB BACKUP IN
+#                           PARALLEL
+#    rdelapen    10/11/19 - Enh 30007179 - VALIDATE IF TDE WALLET LOC BELONGS
+#                           TO THE CURRENT TDE WALLET
+#    gagagarw    09/23/19 - Bug 30316611 - DBCS AUTOMATIC BACKUPS NOT AVAILABLE 
+#    			    THROUGH CONSOLE
+#    itcherna    09/18/19 - Bug 30303712: CLOUD BACKUPS GETS HUNG DUE TO UNAVAILABILITY OF
+#                           SESSIONS TO RUN RMAN
+#    itcherna    09/25/19 - Enh 30153633 - RMAN BACKUPS TO ALLOCATE CHANNELS
+#                           USING BACKUP SERVICES
+#    vidsunda    09/13/19 - Bug 30298575 - Restrict Delete obsolete in oss-only 
+#                           backup to device type SBT 
+#    andeleon    09/05/19 - Fix for 30248801.
+#    aliarias    08/30/19 - Bug 30232418 - BACKUP DATABASE FAILS WITH "CFG FILE
+#    mkandarp    08/26/19 - Bug 30222694: NFS backup to use level0 and level1
+#    mkandarp    08/21/19 - Bug 30081248: Incorrect log file listed for errors
+#    vidsunda    08/14/19 - Include Incremental Level 1 Root database backup with
+#			    every PDB Backup
+#    aoruiz      08/12/19 - Using oracle permissions to bkup.
+#    cmarisca    08/01/19 - adding $alerts{e} convention to longterm logs
+#    cmarisca    07/31/19 - Changing notation of log messages when longterm->
+#                           config files are uploaded to OSS
+#    mkandarp    07/31/19 - Bug : 29917604, cfg file upload failure
+#    aliarias    07/31/19 - XbranchMerge aliarias_bug-30097882 from main
+#    aliarias    07/30/19 - BUG 30097882 - EXACC-OCI 19.2.1: 190718.2320: DCS
+#                           AGENT API: LIST MULTIBACKUPCONFIGS RETURNS 500
+#                           BUG 30117139 EXACC: NFS ONLY MOUNTED IN FIRST NODE 
+#                           IMPACTING BACKUP/RECOVERY OPERATIONS.
+#    cmarisca    07/26/19 - TDEWALLETLOC BACKUPREPORT PARAMETER IS WRONG FOR
+#                           LONGTERM + OSS BACKUP
+#    mkandarp    07/16/19 - Bug 30048572: Restore validate errors
+#    itcherna    07/12/19 - ATPD - BKUP_API.LOG SHOWS : ERROR -> DBCORE: ERROR:
+#                           QUERY RETURNED NO OUTPUT
+#    mkandarp    07/10/19 - Bug 30028742: remove restore validate after level0
+#    mkandarp    07/09/19 - Bug 29710780: Replace crosscheck with restore
+#                           validate
+#    aliarias    06/12/19 - Enh 29826845 - ADD PARAMETERS MISSING IN EXA BACKUP
+#    aliarias    06/12/19 - Enh 29826845 - ADD PARAMETERS MISSING IN EXA BACKUP
+#                           REPORT TO BE COMPAT TO VMBM IRESTORE
+#    pumohan     06/05/19 - Changes for isolated TDE wallet
+#    mkandarp    06/05/19 - Bug 29766759: Add show all;
+#    vidsunda    06/04/19 - Bug 29464331 - Fix standby backup failure message
+#    mkandarp    06/04/19 - Bug 29846101: Skip restore validation on L0 day for
+#    ogallego    06/03/19 - ER 29863161: Add pdb support for NAS
+#    jevaldes    05/29/19 - IBKP ORACLE HOME BACKUP PURGE
+#    mkandarp    05/28/19 - Bug 29837966 : ZDLRA pdb backup, no delete obsolete
+#    mkandarp    05/23/19 - bug 29632106: Run allocate channel for ZDLRA
+#    itcherna    05/08/19 - Bug 29741490 - TDSRGBKUPRECOV.DIF HAPPENS IN DBAAS
+#                           MAIN ALL NON-DG SRGS
+#    mkandarp    04/16/19 - Bug 29632104: Run blocks for DISK+OSS config
+#    mkandarp    05/07/19 - Bug 29711765: Purging obsolete disk backups
+#    mkandarp    05/07/19 - Bug 29749663: Add section size to root backup
+#    mkandarp    05/01/19 - Bug 29714551: change determination of DG
+#    mmahawar    04/03/19 - Bug 29249170: Obkup to accept db_unqiue_name
+#    mkandarp    03/05/19 - Bug 29443957: Cleanup templates and RUN block for
+#                           oss only
+#    itcherna    03/04/19 - Bug 29241387 - OBKUP TO VERIFY SPEC FILES BEFORE
+#                           TARRING
+#    mmahawar    02/19/19 - Bug 29367363 - ATP: BACKUP PIECES OF ROOT DATABASE
+#                           ARE NOT COMPRESSED
+#    ogallego    02/14/19 - Fix bug 29357846: Add custom format to keep forever
+#    jevaldes    02/11/19 - BUG 29279265 - ATP - MAA : RMAN BACKUP FORMAT
+#                           CLAUSE REVIEW BEST PRACTICES
+#    mkandarp    02/07/19 - Bug 29324827: No FORCE delete
+#    jpizana     02/07/19 - fix for bug 29254237
+#    jevaldes    02/01/19 - 28926533 - IBKUP REPLACE SHOULD ALLOW CUSTOMER TO
+#                           SPECIFY DATABASE OPEN MODE
+#    mkandarp    02/06/19 - Bug 29298745: Allow uncompressed backups
+#    mkandarp    01/30/19 - Bug 29286392: pdb disk retention window
+#    andeleon    01/15/19 - Fix for bug 29110276.
+#    ogallego    01/08/19 - ER 29030876: Add custom format to bkups
+#    mkandarp    01/17/19 - Bug 29213791: Unique DBAAS INCR tag
+#    mkandarp    01/22/19 - Bug 28924050 : Level 0 when no level 0 exists
+#    mkandarp    01/16/19 - Bug 29223087 : ZDLRA should not use compressed
+#                           backup set
+#    mkandarp    01/16/19 - Bug 29213728 : ZDLRA level 1 has two backups of
+#                           each datafile
+#    mkandarp    01/16/19 - Bug 29207992 : ZDLRA CONFIGURATION - DOES NOT
+#                           FOLLOW INCR-FOREVER STRATEGY
+#    mkandarp    01/16/19 - Bug 29186477: Backup to ZDLRA failed
+#    mmahawar    12/27/18 - BUG 28712373 - ATP:EXAOCI-C-BB:FULL BACKUP IS NOT
+#                           SUPPORTED FOR PDB BACKUP
+#    andeleon    12/14/18 - XbranchMerge andeleon_bug-29023825 from
+#                           st_dbaas_18.2.3.1.0
+#    andeleon    12/13/18 - Printing tde_wallet_tar_loc
+#    ankikhan    12/01/18 - bug 28363227: capture pdb backup and restore
+#                           operations
+#    ogallego    11/26/18 - Fix bug 28961108: NULL PASSWORD ERROR
+#    veagala     11/21/18 - 28930832 - ConfigFiles backing up other database
+#                           Files
+#    mkandarp    10/30/18 - Bug 28770365: Daily incremental/Full to include
+#                           archive logs
+#    mkandarp    10/30/18 - Bug 28834283: Archive log deletion on disk for oss
+#                           only backups
+#    ogallego    10/16/18 - XbranchMerge ogallego_bug28295715 from
+#                           st_dbaas_18.2.3.1.0
+#    mkandarp    10/16/18 - Bug 28801363: Adhloc L0 backup with a flag
+#    ogallego    10/11/18 - XbranchMerge ogallego_bug-28344566 from
+#                           st_dbaas_18.1.4.1.0
+#    ogallego    10/11/18 - XbranchMerge ogallego_bug-27629481_18.1.4.1.0 from
+#                           st_dbaas_18.1.4.1.0
+#    mkandarp    10/04/18 - bug 28733168: dbspec tar for rac env as well
+#    sogugupt    10/01/18 - 28260800: weekly restore fails retrun the TAG
+#    mkandarp    09/27/18 - Bug 28660239 : Rman channels
+#    mkandarp    09/25/18 - Bug 28701712: Archive log purge policy for OSS only
+#    mkandarp    09/21/18 - Bug 28686474: section size
+#    rsubash     09/20/18 - READ ONLY DATAFILES OSS BACKUP GETS DELETED WITH
+#    pushksin    09/09/18 - ORA-17624, ORA-27093 by rman in alert log
+#    rsubash     09/07/18 - READ ONLY DATAFILES OSS BACKUP GETS DELETED WITH
+#    rsubash     09/06/18 - Change obkup to modify delete obsolete command
+#    gagagarw    08/30/18 - Bug 28561825: No space left on OSS for backups
+#    mkandarp    08/16/18 - Bug 28489008 : dynamic rman configure commands
+#    mkandarp    08/12/18 - Bug 28491649: Section size MAA best practices
+#    fausalaz    07/17/18 - Bug 28244905: Update full backup to bug 27821731's
+#    mkandarp    07/16/18 - Bug 28222988: ADD ALTER SYSTEM SWITCH ARCHIVE LOG
+#    mkandarp    07/03/18 - Bug 24798742: Add section size
+#    ogallego    07/04/18 - ER 27889378: ZDLRA best practices
+#    ogallego    06/25/18 - Fix bug 28135945: Remove cdb statements from pdb
+#                           backup
+#    mkandarp    06/19/18 - Bug 28209349: Add set command for oss incrementals
+#    ogallego    06/15/18 - Fix dgobserver bugs
+#    pushksin    06/12/18 - Enh-27674442 restore archive log validation
+#    ogallego    06/04/18 - XbranchMerge ogallego_bug-28068327 from
+#                           st_dbaas_18.3.1.0.0
+#    mkandarp    05/03/18 - Bug 27964238: Alter system archive log current
+#    pushksin    05/09/18 - Bug 27912754: obkup restore archive from time
+#                           sysdate - 7 validate failing with error
+#    pushksin    05/02/18 - Bug 27912754: obkup restore archivelog validate
+#                           failing with error
+#    mkandarp    05/02/18 - Bug 7915944: Recover copy of database is failing
+#    pushksin    05/01/18 - 27912754 - : OBKUP "RESTORE ARCHIVELOG FROM TIME
+#                           'SYSDATE - 7' VALIDATE" FAILING WITH ERROR
+#    mkandarp    04/24/18 - Bug 27821731: use uuid as command id for rman
+#    mkandarp    04/12/18 - Bug 27831894: delete obsolete from disk
+#    mkandarp    04/09/18 - Bug 27589059: report error when run on STANDBY
+#    pushksin    03/12/18 - dbaas:bb-Bkup_api fails to take long term
+#                           backup(11204)
+#    srdamar     03/08/18 - Bug 27649287 - UPDATE BACKUP POLICY TO BACKUP
+#                           DATAFILE COPY ONCE EVERY 7 DAYS INSTEAD OF DAILY
+#    jpizana     03/02/18 - ER 27629481
+#    jpizana     02/28/18 - ER 27573727
+#    shavenug    02/21/18 - 27576874 - INVM CNSV2 IMPLEMENTATION
+#    pushksin    03/02/18 - Bug 27616805 - OBKUP FAILS IN ECS
+#    ogallego    07/12/18 - XbranchMerge jpizana_bug-27629481 from main
+#    mkandarp    02/13/18 - Bug 27405373: OSS backups not getting purged
+#    ogallego    01/22/18 - Enh 27403236: Parametrize oss full backup day
+#    sogugupt    12/28/17 - Fix for 27318848
+#    sogugupt    11/23/17 - Fix for 27152667
+#    pushksin    11/04/17 - BUG 26835180 - OBKUP PRECHECK IF WALLET IS
+#                           AUTOLOGIN
+#    pushksin    11/03/17 - Bug 26835180 - OBKUP PRECHECK IF WALLET IS
+#                           AUTOLOGIN .
+#    sogugupt    10/23/17 - fix for bug 26798500
+#    sogugupt    10/16/17 - OBKUP NO LONGER CLEANING ARCHIVED REDO FROM FLASH RECOVERY AREA
+#    jpizana     08/25/17 - fix for bug 26645318
+#    jpizana     08/22/17 - XbranchMerge jpizana_bug-25431021 from
+#                           st_dbaas_16.2.0
+#    jpizana     07/29/17 - ER 25431021 - ZDLRA support for ExaCM v2
+#    xihzhang    07/17/17 - Bug 26473293 replace dbtype bmsi with siasm
+#    xihzhang    07/11/17 - ER 26248794 DB cloud type enhancement
+#    ogallego    06/20/17 - XbranchMerge
+#                           ogallego_bug-25994747_17.3.1.0.0_17.3.3.0.0 from
+#                           st_dbaas_17.3.3.0.0
+#    ogallego    06/12/17 - XbranchMerge ogallego_bug-25994747_17.3.1.0.0 from
+#                           st_dbaas_17.3.1.0.0
+#    ogallego    06/01/17 - XbranchMerge ogallego_bug-25994747 from main
+#    ogallego    05/26/17 - Bug 26095526, add support to pdb
+#    gagagarw    05/25/17 - XbranchMerge gagagarw_bug_25831613 from main
+#    xihzhang    05/23/17 - Bug 26131634 enable bkup & orec on BM SI
+#    fausalaz    05/01/17 - XbranchMerge fausalaz_bug25833655_new from
+#                           st_dbaas_17.2.5.0.0
+#    fausalaz    04/25/17 - XbranchMerge fausalaz_bug-25948550 from
+#                           st_dbaas_17.2.5.0.0
+#    xihzhang    03/21/17 - XbranchMerge xihzhang_bug-25430994 from
+#                           st_dbaas_16.2.0
+#    gusanche    02/27/17 - Bug 25462857 - CREATE EVENT LOGGER MODULE
+#    mkandarp    02/16/17 - bug 25568713 : faster backups with DISK+OSS
+#    sogugupt    01/13/17 - Bug 22905949
+#    sogugupt    12/14/16 - Bug 25206470
+#    fausalaz    11/30/16 - XbranchMerge fausalaz_bug-24845752_16.2.0.0.0exa
+#                           from st_dbaas_16.2.exa
+#    jpizana     11/14/16 - XbranchMerge jpizana_bug-24928092 from
+#                           st_dbaas_16.2.0
+#    fausalaz    11/03/16 - XbranchMerge fausalaz_bug-24976481 from
+#                           st_dbaas_16.4.4.0.0.exacm
+#    sogugupt    09/13/16 - Bug 24603468 - Correct the dir location
+#    aliarias    08/18/16 - XbranchMerge aliarias_bug-23023412_16.2.0.0.0 from
+#                           st_dbaas_16.2.0
+#    sogugupt    07/201/6 - Bug 24322516 - when oss is not configured then
+#                           don't run cfg_clean_oss_backup
+#    fausalaz    11/02/16 - Bug 24976481: Support nfs case for reval
+#    aliarias    08/10/16 - XbranchMerge aliarias_bug-23023412 from
+#    sogugupt    07/07/16 - Bug 19859404
+#    xihzhang    07/01/16 - bug 23667050 archivelog restore validation failed
+#                           after deleting archivelogs
+#    pverma      06/28/16 - Enable encryption for OSS only backups of
+#                           archivelogs
+#    jpizana     06/28/16 - fix for bug 23701839
+#    pverma      06/23/16 - XbranchMerge pverma_bug-23604239 from
+#                           st_dbaas_16.2.0
+#    aliarias    06/22/16 - XbranchMerge aliarias_bug-22994559_16.2.0.0.0 from
+#                           st_dbaas_16.2.0
+#    aliarias    06/22/16 - XbranchMerge aliarias_bug-22994559 from
+#                           st_dbaas_16.3.1.0.1.exa
+#    pverma      06/21/16 - Fix for DISK+OSS case of backup for standard
+#                           edition
+#    aliarias    06/21/16 - XbranchMerge jpizana_bug_23195858_16.2.5.0.0exa
+#                           from st_dbaas_16.2.5.exa
+#    sogugupt    06/02/16 - Bug 23506621: Use correct range for timelocal
+#    jpizana     05/17/16 - XbranchMerge jpizana_bug_22330890 from
+#                           st_dbaas_15.3.exa
+#    aliarias    04/29/16 - XbranchMerge aliarias_bug-23191644 from
+#                           st_dbaas_16.2.5.0.0
+#    oguetam     04/25/16 - XbranchMerge oguetam_bug-23029798 from
+#                           st_dbaas_16.2.3opcm
+#    oguetam     04/20/16 - XbranchMerge oguetam_bug-23056358 from
+#                           st_dbaas_16.2.3opcm
+#    xihzhang    04/01/16 - fix bug-23020560: display proper error message on
+#                           ORA-19804
+#    sogugupt    03/22/16 - Bug 22386669 - Clean oss cfg  file backup
+#    jpizana     05/03/16 - XbranchMerge jpizana_bug_23195858 from
+#                           st_dbaas_16.2.5.0.0
+#    jpizana     03/17/16 - XbranchMerge jpizana_bug_22915176 from
+#                           st_dbaas_16.2.1.0.0
+#    jpizana     03/16/16 - bug 22879038 : cfgfiles to nfs
+#    aliarias    03/10/16 - Bug 22911165 - OPCM SUPPORT OREC AND OBKUP DONT ASK
+#                           FOR DBNAME IN MOH WHEN THERE IS JUST ONE H
+#    xihzhang    02/26/16 - fix bug-22808888: restore validation error when
+#                           mode is none
+#    sogugupt    02/22/16 - Bug 22697226:correct log info backup archivelogmode
+#    oguetam     02/16/16 - ER 22534928
+#    jpizana     02/16/16 - new subcontainer naming for cfgfiles: hostname +
+#                           dbid
+#    xihzhang    02/09/16 - fix bug-22696471: BKUP_TYPE parameter is missing
+#    xihzhang    02/08/16 - fix bug-22610944: add restore validation call
+#    xihzhang    02/01/16 - restore validation automation
+#    osfernan    01/15/16 - fix for bug 22314284
+#    xihzhang    01/14/16 - restore validation
+#    pverma      01/13/16 - Fix for BUG 22460802 - BACKUP FAILED WHEN CHOSE
+#                           "NONE" AS BACKUP DESTINATION
+#    jpizana     12/09/15 - fix for bug 22341961.
+#    jpizana     12/03/15 - change sudirectory of cfgfiles
+#    xihzhang    10/12/15 - XbranchMerge xihzhang_debug_21811662 from
+#                           st_dbaas_14.1
+#    angfigue    10/01/15 - Fixing parser
+#    jpizana     08/07/15 - Delete Archive Log when no bkups are configured.
+#    diglesia    07/08/15 - pass assistant logger to db object
+#    jpizana     07/02/15 - fix for bug 20191346
+#    jpizana     06/16/15 - fix for bug 21266768.
+#    jpizana     03/02/15 - handling of RAC/ASM parameters/paths. bug 20631955.
+#    angfigue    02/12/15 - XbranchMerge angfigue_bug-20459129 from
+#                           st_dbaas_14.1
+#    jpizana     01/13/15 - bug fix 20203306
+#    jpizana     01/09/15 - fix for bug 20271406
+#    angfigue    11/26/14 - space validation for backup
+#    angfigue    02/10/15 - message update
+#    angfigue    02/10/15 - removing functions for system functions for cfg
+#    angfigue    11/18/14 - removing prompt from delete request
+#    angfigue    10/23/14 - missed line
+#    jpizana     10/14/14 - fix for bug 19797240. improved parsing of db unique
+#                           name.
+#    angfigue    10/07/14 - - Including to die errors to the principal log
+#    angfigue    10/02/14 - - updating catalog connection string for keep
+#                           forever backups
+#    angfigue    10/01/14 - new flag to insert as part of the initial log
+#    angfigue    09/30/14 - mechanism to be storing the logs befor dumping
+#    angfigue    09/30/14 - oss config files logs
+#    angfigue    09/29/14 - removing / tar message
+#    angfigue    09/29/14 - - fixing hash name for altert
+#    angfigue    09/25/14 - - failure in intermediate steps messages
+#    angfigue    09/22/14 - formating update for bug
+#    angfigue    09/11/14 - Known errors for oss bug-19585950
+#    jpizana     09/03/14 - XbranchMerge jpizana_bug_19540194 from
+#                           st_dbaas_14.1.0.0drop5rc2
+#    angfigue    08/21/14 - backport to main bug-19392973
+#    angfigue    08/19/14 - updating error string
+#    angfigue    08/19/14 - adding known oss error
+#    angfigue    07/14/14 - format
+#    angfigue    07/14/14 - adding adding to the main foo
+#    angfigue    07/11/14 - Validation to check if backups are ok .
+#    angfigue    06/11/14 - Detecting if the database is on
+#    angfigue    06/09/14 - Updating to perform more information while deleting
+#                           backups
+#    angfigue    06/03/14 - Adding validation for config files
+#    gusanche    06/02/14 - bug 18402437
+#    jpizana     06/02/14 - skip backups when instance is in standby mode.
+#    angfigue    05/28/14 - Adding delete execution
+#    angfigue    05/28/14 - Adding delete backup based on tag option
+#    angfigue    05/26/14 - Error validation for long term
+#    angfigue    05/26/14 - Obkup log addition for forever backups
+#    angfigue    05/26/14 - Adding config files validation
+#    angfigue    05/18/14 - removing flags
+#    angfigue    05/18/14 - fifixing compiliation issues
+#    angfigue    05/18/14 - Adding keep forever backups
+
+BEGIN {
+  # Add required perl module locations
+  #
+  my $modroot = defined($ENV{ADE_VIEW_ROOT}) ? "$ENV{ADE_VIEW_ROOT}/dbaas/opc/tools" : "/var/opt/oracle";
+  unshift( @INC, "$modroot/bundled_perllibs" );
+}
+
+# Assuming 'n' equals to 8 days.
+# The RECOVER COPY... line will not do anything until the script has been running for more than 'n' days.
+# # The BACKUP INCREMENTAL line will perform a complete backup (level 0) the first day it is run,
+# # with all subsequent backups being level 1 incremental backups.
+# # After 'n' days, the RECOVER COPY... line will start to take effect, merging(roll forwarding) all incremental
+# # backups older than 'n-1' days into the level 0 backup, effectively moving the level 0 backup
+# # forward. The effect of this is that you will permanently have a 'n' day recovery window with
+# # a 'n' day old level 0 backup and several level 1 incremental backups.
+# # Notice that the tag must be used to identify which incremental backups apply to which image copies.
+
+use strict;
+use warnings;
+
+use English;
+use File::Path;
+use Cwd;
+use File::Basename;
+use File::Copy;
+use Cwd 'abs_path';
+use Time::Local;
+use POSIX qw(strftime);
+use JSON;
+
+
+chdir(dirname($0));
+#######################################
+# Adding paths to use common modules  #
+# #####################################
+use FindBin qw($RealBin);
+use lib "/var/opt/oracle/perl_lib";
+use lib "$RealBin/../../../perl_lib";
+use lib "$RealBin/../../../perl_lib/DBAAS";
+use lib "$RealBin";
+
+
+use DBAAS::odg;
+use DBAAS::bkup;
+use DBAAS::db;
+use DBAAS::sh;
+use DBAAS::creg;
+use DBAAS::logger;
+use DBAAS::ewallet;
+use DBAAS::rac;
+use DBAAS::tde;
+use DBAAS::Utils::PathProvider;
+use DBAAS::Utils::PermissionsUtils;
+use DBAAS::bkup_validate;
+use DBAAS::opc_installer;
+
+# Messaging addition -> this will be updated to integrate
+# the logger module with the backup module instead.
+my $NAME = "OBKUP";
+my $OCMD = " ";
+$OCMD = "su - oracle " if($<==0);
+my $dbname; # Multi-OH support.
+my $archivelog; # Mode to backup only archivelogs.
+my $currentcf=0; # Mode to backup only current controlfile
+my $keep_option_tag = "";
+my $keep_option = "";
+my $uuid_cid = 'OBKUP-CID-';
+my $datestring = strftime "%Y%m%d%H%M%S", localtime;
+$uuid_cid .= $datestring;
+my $mode = "";
+my $rv_mode = "";  # restore validation mode: oss/disk/ossdisk
+my $arv_mode = "";  # restore validation mode: oss/disk/ossdisk
+my $do_reval = 0;  # whether do restore validation
+my $elogger_params = {};
+my $pdbs;
+my $retention_window=0;
+my @mounted_pdbs = ();#List of mounted pdbs
+my $level0 = 0;
+my $level1 = 0;
+my $levelZeroFlag = 0;
+my $cron = 0;
+my $timestamp = "";
+my $datafile_backup = 0;
+my $custom_format = "";
+my $tns_services;
+my @tns_services_list;
+my $autobackup_handle = "";
+my $autobackup_tag = "";
+my $modroot = defined($ENV{ADE_VIEW_ROOT}) ? "$ENV{ADE_VIEW_ROOT}/dbaas/opc/tools" : "/var/opt/oracle";
+my $backup_mode = "regular";
+my $xparams;
+my $isBackupMetadataOnly="no";
+my %tarball_names;
+
+my $oss_opts;
+
+my %alerts = (
+	"i" => "$NAME\:\:",
+	"e" => "$NAME\:\:ERROR",
+	"w" => "$NAME\:\:WARNING",
+);
+
+
+my $OSS_RETRY = ${bkup::OSS_RETRY};
+my $OSS_RETRY_SEC = ${bkup::OSS_RETRY_SEC};
+my $def_filesperset_regular = ${bkup::def_filesperset_regular};
+my $def_filesperset_al = ${bkup::def_filesperset_al};
+
+# Variable to store stdout to dumping at the end of the execution
+my @dump_log = ();
+
+# Args
+my @MYARGV = @ARGV;
+my @modes = ("keep", "cat_status", "help", "archivelog", "validatearchive", "currentcf", "delete_obsolete");
+my @keeps = ("tag", "delete");
+
+# Getting dbname for early $LOG initialization
+my @dbname_arg = grep(/dbname/, @MYARGV);
+my ($key, $value) = split(/=/, $dbname_arg[0], 2) if (@dbname_arg != 0);
+$dbname = $value;
+
+#Multi-OH
+#When there is just one home there is not needed to ask for dbname parameter.
+if (!defined($dbname) || $dbname eq "") {
+   my $dir = "/var/opt/oracle/creg";
+   opendir(DIR, "$dir");
+   my @files = readdir(DIR);
+   closedir(DIR);
+   my @ini = grep  /\.ini$/, @files;
+   if (scalar @ini == 1){
+      $dbname=$ini[0];
+      my $find = ".ini";
+      my $replace = "";
+      $find = quotemeta $find; # escape regex metachars if present
+      $dbname =~ s/$find/$replace/g;
+ }
+}
+
+# Early log initialization for Error framework usage
+# Bug 31215373: One daily log for AL jobs to reduce the number of logs generated per day.
+# Daily log for Current CF backup
+my $LOG;
+
+if (grep { /archivelog|currentcf/i } @MYARGV) {
+   $LOG = logger->new(lc($NAME),$dbname, { daily_log => 1 });
+} else {
+   $LOG = logger->new(lc($NAME),$dbname, undef);
+}
+
+my $logfile = $LOG->_getlogf;
+$LOG->logprt("Logfile: $logfile\n");
+$LOG->add_errorinfo_resource_bundle("$modroot/perl_lib/DBAAS/resource/dbaas-bkup-execution-errorinfo.json");
+
+while(@MYARGV) {
+  my $arg = (shift(@MYARGV)); # convert to lower case
+
+  $arg =~ s/\-+//; # remove the leading -
+
+  my ($key, $value) = split(/=/, $arg, 2);
+  $LOG->logerr({ errorinfo => { ID => "COMMON_MANDATORY_PARAMETERS_NOT_PROVIDED_ERR", ARGS => [$key,$logfile] }}) if ((not defined ($value)) && !( $key =~ m/keep|archivelog|validatearchive|cat_status|help|level0|level1|datafiles|currentcf|delete_obsolete|cron/i)); 
+
+  my $is_mode = grep { $_ eq $key } @modes;
+  my $is_keep = grep { $_ eq $key } @keeps;
+
+  if ($key eq "dbname") {
+      $dbname = $value;
+  }
+
+  if ($key eq "reval") {
+      $rv_mode = $value;
+      $do_reval = 1;
+  }
+
+  if ($key eq "archivelog") {
+      $archivelog = "yes";
+  }
+
+  if ($key eq "tag"){
+      $keep_option_tag = $value;
+  }
+
+  if ($key eq "delete"){
+      $keep_option_tag = $value;
+  }
+
+  if ($key eq "pdb") {
+      $pdbs=$value;
+  }
+
+  if ($key eq "uuid") {
+    $uuid_cid =  $value;
+  }
+
+  #ER 28801363: take a level 0 requested via flag level 0
+  if ($key eq "level0") {
+    $level0 = 1;
+  }
+
+  if ($key eq "currentcf") {
+      $currentcf = 1;
+  }
+
+
+  #Bug 30666628 take a level 1  requested via flag level 1
+  if ($key eq "level1") {
+    $level1 = 1;
+  }
+
+  if ($key eq "cron") {
+    $cron = 1;
+  }
+
+  #ER 28801363: datafiles backup to OSS flag datafiles
+  if ($key eq "datafiles") {
+    $datafile_backup = 1;
+  }
+
+  #ER 29030876: Add custom format to bkups. The format passed from CP is ?DBT<type><epoch_in_milli><3_random_chars>?, so length is 3 + 17 + 13 + 3
+  if ($key eq "format"){
+    $custom_format = $value;
+    $LOG->logerr({ errorinfo => { ID => "COMMON_PARAMETER_INVALID_VALUE_ERR", ARGS => ["format", $custom_format,$logfile ]}}) if ($custom_format !~ m/^[a-zA-Z0-9-]{1,36}$/);
+
+  }
+
+  if ($key eq "timestamp") {  
+    $timestamp = $value;
+  }
+
+  if ($key eq "isBackupMetadataOnly") {
+    $isBackupMetadataOnly = $value;
+  }
+
+  if ($key eq "services") {
+    $tns_services = $value;
+    open my $fd, "<:encoding(UTF-8)", $tns_services or die "ERROR: Could not open services json file $tns_services\n";
+    local $/;
+    my $jdata = <$fd>;
+    my $services_json = JSON->new;
+    my $data = $services_json->decode($jdata);
+    my @tns = @{$data->{'params'}->{services}};
+    foreach my $f ( @tns ) {
+      	push(@tns_services_list, $f->{"tns_alias"});
+      	print "$f->{\"tns_alias\"}\n";
+    }
+    $LOG->logerr({ errorinfo => { ID => "COMMON_MISSING_PARAMETER_ERR", ARGS => ["TNS Services list"]}}) if (@tns_services_list && scalar @tns_services_list == 0);
+  }
+
+  ##EXACS-67456 - ALLOW BKUP_CHANNELS_NODE MODIFICATION IN BACKUP CONFIG DURING ONGOING BACKUP
+  if($key eq "xparams") {
+     $LOG->logprt("::Adding additionalArgs:: \n");
+     my $data_tmp = $value;
+     my $tmp = JSON->new;
+     ##decode additionalArgs as json
+     $xparams = $tmp->decode($data_tmp);
+  }
+
+  if ($is_mode){
+      # verifying if mode is already defined abort
+      $LOG->logerr({ errorinfo => { ID => "COMMON_PARAMETERS_CANNOT_COEXIST_ERR", ARGS => [$mode,$key,$logfile]}}) if ($mode ne "");
+      $mode = $key;
+  }
+
+  if ($is_keep){
+      # if keep option already defined show an error
+      $LOG->logerr({ errorinfo => { ID => "COMMON_PARAMETERS_CANNOT_COEXIST_ERR", ARGS => [$key,$keep_option,$logfile], EXIT_ON_FATAL => 1 }}) if ($keep_option ne "");
+      $keep_option = $key;
+  }
+
+}
+
+#####################################################################
+#                  DEFINITION OF GLOBALS                            #
+#####################################################################
+
+my $REG = creg->new($dbname, { log => $LOG });
+# Reload dbname. Call to obkup can be made using db_unqiue_name from standby.
+$dbname= $REG->get("dbname");
+my $EXE = sh->new($dbname);
+my $RAC = rac->new($dbname, { log => $LOG });
+my $DB  = db->new($dbname, { log => $LOG });
+#Bug 30812997 - Dump Command line args
+$LOG->logprt("$alerts{i} invoked with args : @ARGV \n");
+my $dataguard_state = is_dataguard_enabled();
+my $dataguard_mode = dataguard_mode();
+my $rman_session_total = 64;
+my $rman_threshold = $rman_session_total*.8;
+my $tmpdir = $LOG->getlogd() . "/$uuid_cid";
+my $permissions_utils = PermissionsUtils->new($LOG);
+my $PathProvider = PathProvider->new($LOG);
+
+
+###################################################################
+#                       PATH GLOBALS                              #
+###################################################################
+my $CHOWN_PATH = $PathProvider->get_os_cmd_path( 'chown' );
+my $MOUNTPOINT_PATH = $PathProvider->get_os_cmd_path( 'mountpoint' );
+my $SUDO_PATH = $PathProvider->get_os_cmd_path( 'sudo' );
+my $DATE_PATH = $PathProvider->get_os_cmd_path( 'date' );
+my $MKDIR_PATH = $PathProvider->get_os_cmd_path( 'mkdir' );
+my $CAT_PATH = $PathProvider->get_os_cmd_path( 'cat' );
+my $ECHO_PATH = $PathProvider->get_os_cmd_path( 'echo' );
+my $HOSTNAME_PATH = $PathProvider->get_os_cmd_path( 'hostname' );
+my $LOGGER_PATH = $PathProvider->get_os_cmd_path( 'logger' );
+my $CP_PATH = $PathProvider->get_os_cmd_path( 'cp' );
+my $FIND_PATH = $PathProvider->get_os_cmd_path( 'find' );
+my $SED_PATH = $PathProvider->get_os_cmd_path( 'sed' );
+my $GREP_PATH = $PathProvider->get_os_cmd_path( 'grep' );
+my $SORT_PATH = $PathProvider->get_os_cmd_path( 'sort' );
+my $HEAD_PATH = $PathProvider->get_os_cmd_path( 'head' );
+my $RM_PATH = $PathProvider->get_os_cmd_path( 'rm' );
+my $AWK_PATH = $PathProvider->get_os_cmd_path( 'awk' );
+my $TAR_PATH = $PathProvider->get_os_cmd_path( 'tar' );
+my $CHMOD_PATH = $PathProvider->get_os_cmd_path( 'chmod' );
+my $TOUCH_PATH = $PathProvider->get_os_cmd_path( 'touch' );
+my $LN_PATH = $PathProvider->get_os_cmd_path( 'ln' );
+my $SU_PATH = $PathProvider->get_os_cmd_path( 'su' );
+
+my $oh = $REG->get("oracle_home");
+my $RMAN_PATH = $PathProvider->get_oraclehome_cmd_path( $oh, 'rman' );
+my $SQLPLUS_PATH = $PathProvider->get_oraclehome_cmd_path( $oh, 'sqlplus' );
+my $OSS_PATH = "/var/opt/oracle/oss/oss";
+my $DBAASCLI_PATH = "/var/opt/oracle/dbaascli/dbaascli";
+
+my %vars = (
+     'CLUSTER'          => $REG->get("dbtype"),
+#     'BKUP_DATA'        => 'yes',
+     'BKUP_TYPE'        => $REG->get("bkup_type"), # diskoss / disk / oss / nfs / zdlra
+     'BKUP_OSS'         => $REG->get("bkup_oss"),
+     'BKUP_NFS'         => $REG->get("bkup_nfs"),
+     'BKUP_NFS_MNT_DIR' => $REG->get("bkup_nfs_mount_dir") || "",
+     'BKUP_DISK'        => $REG->get("bkup_disk"),
+     'BKUP_ZDLRA'       => $REG->get("bkup_zdlra"),
+     'BKUP_ZDLRA_URL'   => $REG->get("bkup_zdlra_url"),
+     'BKUP_DBRS'       => $REG->get("bkup_dbrs"),
+     'BKUP_REALTIME_REDOTRANS' => $REG->get("bkup_realtime_redotrans"),
+     'BKUP_CFG_FILES'   => $REG->get("bkup_cfg_files"),
+     'BKUP_CFG_DEST'    => $REG->get("bkup_cfg_dest") || "no",
+     'BKUP_TDE_DEST'    => $REG->get("bkup_tde_dest") || "none",
+     'BKUP_SCRIPT_LOC'  => $REG->get("bkup_script_loc"),
+#     'CFG_SCRIPT'       => "",
+     'BKUP_CATALOG'     => $REG->get("bkup_use_rcat"),
+     'BKUP_CATALOG_SID' => $REG->get("bkup_rcat_sid"), #CATALOG
+     'BKUP_CAT_CONN'    => "",
+     'CDB'              => $REG->get("cdb"),
+     'LVL0_DAY'         => $REG->get("bkup_l0_day") || "Sun", #Sun is default value in case that bkup assistant has not been executed after patch
+     'RETENTION_WINDOW' => $REG->get("bkup_rman_retention"), #8
+     'EDITION'          => $REG->get("edition"),
+     'DATAGUARD'        => "",
+     'DB_UNIQUE_NAME'   => $REG->get("db_unique_name"),
+     'DG_MODE'          => undef,
+     'DG_OBSERVER_HOST' => $REG->get("dg_observer_host") || "no",
+     'OHOME'            => $REG->get("oracle_home"),
+     'DATA_GRP'         => $REG->get("data_grp"),
+     'OSID'             => $REG->get("sid"),
+     'OPSSWD'           => undef,
+     'OSS_RETENTION_WINDOW'  => $REG->get("bkup_oss_recovery_window"),
+     'DISK_RETENTION_WINDOW' => $REG->get("bkup_disk_recovery_window") || 7,
+     'NFS_RETENTION_WINDOW'  => $REG->get("bkup_nfs_recovery_window"),
+     'LAST_DFILE_BACKUP_DATE'  => $REG->get("last_dfile_backup_date"),
+     'BKUP_SET_SECTION_SIZE'   => $REG->get("bkup_set_section_size") || "no",
+     'BKUP_SECTION_SIZE'       => $REG->get("bkup_section_size") || "64G",
+     'BKUP_CHANNELS_NODE'      => $REG->get("bkup_channels_node") || 1,
+     'AL_BKUP_CHANNELS_NODE'   => $REG->get("rmanArchiveLogChannels") || "default",
+     'BKUP_FILESPERSET_AL'     => $REG->get("bkup_filesperset_al") || $def_filesperset_al,
+     'BKUP_FILESPERSET_REGULAR'    => $REG->get("bkup_filesperset_regular") || $def_filesperset_regular,
+     'LAST_L0_DATE'            => $REG->get("last_level0_date")|| "",
+     'BUNDLE'                  => $REG->get("bundle"),
+     'COMPRESSION'             => $REG->get("bkup_rman_compression") || "LOW",
+     'AL_COMPRESSION'          => $REG->get("Compress_Archive_Logs") || "false",
+     'BKUP_STANDBY_ENABLED'    => $REG->get("bkup_standby_enabled") || "no",
+     'HSM'                     => $REG->get("tde_kms_config") || 0,
+     'AL_RETENTION_FRA'        => $REG->get("bkup_archlog_fra_retention") || 1,
+     'TRANSITION_STATE'        => $REG->get("bkup_transition_state") || '',
+    );
+
+my $section_size;
+my $compression;
+my $filesperset_al = $vars{'BKUP_FILESPERSET_AL'};
+my $filesperset_regular = $vars{'BKUP_FILESPERSET_REGULAR'};
+my $al_compression;
+my $al_redo_switch = "ALL";
+
+if ($vars{'BKUP_SET_SECTION_SIZE'} =~ m/yes/i ) {
+   $section_size =  $vars{'BKUP_SECTION_SIZE'};
+} else {
+ $section_size = "64G";
+}
+$LOG->logprt("section size is $section_size\n");
+
+$compression = uc($vars{'COMPRESSION'});
+if ($compression =~ m/NONE/i) {
+   $compression = "";
+} else {
+   $compression = "COMPRESSED";
+}
+
+$al_compression = uc($vars{'AL_COMPRESSION'});
+if ($al_compression =~ m/false|no/i) {
+   $al_compression = "";
+} else {
+   $al_compression = "COMPRESSED";
+}
+
+# Level 0 after any TDE migration (file to hsm or hsm to file)
+my $bkup_post_tde_migration = $REG->get("bkup_post_tde_migration") if $REG->exists("bkup_post_tde_migration") || 0 ; 
+
+if ($bkup_post_tde_migration && $mode ne "keep" && ( $vars{'BKUP_TYPE'} eq "oss" || $vars{'BKUP_TYPE'} eq "nfs" ) ){
+  $level0 = 1;
+  $level1 = 0;
+  $archivelog = "no";
+}
+
+#Oracle User bkup permissions - Backwards compatibility:
+#Previously backups were run as root user, considering that the backup folders were as root, this 
+#makes possible to change the folder owner to oracle user. 
+#Bug 31671968: Try to change permissions on bkup/opc folders only if run as root
+if ( $< == 0 ) {
+   $permissions_utils->chown("$vars{'BKUP_SCRIPT_LOC'}/",{recursive=>1});
+   $permissions_utils->chown("$vars{'BKUP_SCRIPT_LOC'}/../opc/",{recursive=>1});
+}
+
+
+#bug 27915944 : Recover copy of database does not find any incrementals
+#to apply when RETENTION_WINDOW is used for recover copy and purging the
+#backups. Delaying the purging by a day for recover copy to catch up.
+#Bug 29711765: We are no longer using this purge_window as it could result
+#in purging backs which RMAN might still need. We will use 
+#recovery window of $vars{'RETENTION_WINDOW'}  days to purge the backup
+#my $purge_window = $vars{'RETENTION_WINDOW'} + 2;
+
+###################################################################
+# Section for known errors
+my $auth_token = "ERROR: Getting Auth Token";
+my $unauthorized_err = ${bkup::unauthorized_err};
+my $kbhs_unauthorized_error = ${bkup::kbhs_unauthorized_error}; 
+
+
+#####################################################################
+#                VERIFYING IF THE SCRIPT IS INSTANTIATED
+#####################################################################
+#if ($enabled ne 'YES'){
+#    $LOG->logprt("$alerts{e} This is a template, please execute backup assistant first\n");
+#    exit 1;
+#}
+
+
+#####################################################################
+##     VALIDATING LONGTERM IS NOT SUPPORTED ON BKUPS TO DISK
+######################################################################
+
+if($vars{'BKUP_TYPE'} eq "disk" && $mode eq "keep"){
+  $LOG->logprt("$alerts{e} Longterm backups are not supported for disk destination.\n");
+  exit 1;
+}
+
+
+#####################################################################
+#   VERIFY IF THE WALLET IS AUTOLOGIN or HSM / OKV
+#####################################################################
+my $db = db->new($dbname, { log => $LOG });
+my $ewallet = ewallet->new($dbname, { log => $LOG});
+my $wstat = $ewallet->get_status();
+my $wstatus = uc $wstat;
+my $db_mversion = $db->get_mversion();
+
+if (($vars{'BKUP_TYPE'} eq "diskoss") || ($vars{'BKUP_TYPE'} eq "nfs")) {
+   if ($wstatus eq "OPEN" && $db_mversion < 12) {
+      $LOG->logprt("$alerts{i} Wallet is in open state\n");
+   } else {
+      my $wtyp = $ewallet->get_type();
+      my $wtype = uc $wtyp;
+      if ($wstatus eq "OPEN" && ($wtype eq "AUTOLOGIN" || $wtype eq "HSM" || $wtype eq "OKV")) {
+         $LOG->logprt("$alerts{i} Wallet is in open $wtype state\n");
+      }else {
+         $LOG->logerr({ errorinfo => { ID => "COMMON_TDE_WALLET_NOT_OPEN_ERR", ARGS => [$dbname, $logfile]}});
+      }
+   }
+}
+
+
+my $backup_handler = _init_bkup();
+# Skip the backup if this is an STANDBY instance on ExaCC.
+if ( $dataguard_mode =~ m/STANDBY/i and $backup_handler->get_modified_bkup_standby_enabled() eq "no") {
+  
+    #bkup_standby_pfile();
+    cleanup_standby_fra();
+}
+
+
+#Bug 32094903: RMAN invokes a "switch logfile" internally. When role is standby this will 
+#fail and logs have spurios msg. In order by bypass log switch, add the following 
+#clause (as per RMAN team's suggestion)
+#RMAN-06820: WARNING: failed to archive current log at primary database 
+$al_redo_switch = "UNTIL TIME 'SYSDATE + 1'" if ($dataguard_mode =~ m/STANDBY/i);
+
+#####################################################################
+#    REQUIRES THAT THE DATABASE IS RUNNING AND UP                   #
+#####################################################################
+if (not defined $vars{'DG_OBSERVER_HOST'} or $vars{'DG_OBSERVER_HOST'} eq "no") {
+    # Normal Behavior, DB must be up to proceed.
+    # if the database is open get the database state if it is only mounted
+    # request that the database must be opened in order to take the hot backup
+    my $sql_state = "select status from v\$instance";
+    my ($state_out, $state_ora) = $DB->sql($sql_state);
+    # Requires that DB is open
+     my $MOUNTED = grep(m/MOUNTED/i, @$state_out);
+     my $OPEN = grep(m/OPEN/i, @$state_out);
+     if ($OPEN == 1){
+         $LOG->logprt("$alerts{i} Oracle database state is up and running\n");
+     }elsif ($MOUNTED != 1){
+         $LOG->logerr({ errorinfo => { ID => "COMMON_DATABASE_NOT_OPEN_ERR", ARGS => [$dbname,"not open",$logfile]}});
+    }
+}else{
+    # DG Observer config backup.
+    $LOG->logprt("$alerts{i} DG observer environment. Backup observer configuration files.\n");
+}
+
+if ($vars{'BKUP_TYPE'} eq "nfs"){
+  my ($cmd, $output, $exit_value);
+  my $nodelist = $RAC->get_anodes();
+  foreach my $node (@$nodelist){
+    my $parent_dir = dirname($vars{'BKUP_NFS_MNT_DIR'});
+    $cmd = "$MOUNTPOINT_PATH -d $vars{'BKUP_NFS_MNT_DIR'} || $MOUNTPOINT_PATH -d $parent_dir";
+    ($output,$exit_value) = $LOG->logexe($cmd,{host => $node, runas => "oracle"});
+    $LOG->logerr({ errorinfo => { ID => "BKUP_EX_NFS_MOUNT_ERR", ARGS => [$node,$vars{'BKUP_NFS_MNT_DIR'}], EXIT_ON_FATAL => 1 }}) if ($exit_value ne "0");
+  }
+}
+
+#                  END VALIDATION
+#######################################################################
+
+
+# This configuration is only feed when backup config files is enabled
+my %cfg_bkup = (
+      'FRA_LOC'             => $REG->get("fra_loc"),
+      'DBNAME'              => $REG->get("dbname"),
+      'SID'                 => $REG->get("sid"),
+      'BKUP_CFG_OS_SPEC'    => $REG->get("bkup_cfg_os_spec"),
+      'BKUP_CFG_DB_SPEC'    => $REG->get("bkup_cfg_db_spec"),
+      'BKUP_CFG_DGOBS_SPEC' => $REG->get("bkup_cfg_dgobs_spec"),
+      'TDE_KS_LOC'          => $REG->get("tde_ks_loc"),
+      'KMS_CDB_JSON'        => undef,
+      'OS_CFG_DIR'          => 'oscfgfiles',
+      'OH_CFG_DIR'          => 'ohcfgfiles',
+      'MODE'                => undef,  # to control what files will be backed up.
+      'DBID'                => undef,
+      'BKP_LOC'             => undef,
+      'BKP_DATE'            => undef,
+      'BKP_TIMESTAMP'       => undef,
+      'BKUP_SCRIPTS_LOC'    => undef,
+      'DOC_SPECS_LOC'       => $REG->get("bkup_script_loc"),
+       #Assuming the Doc Specs are in the same path as this script.
+  );
+# If isolated TDE wallet has been configured copy keys from WALLET_ROOT directory
+$cfg_bkup{'TDE_KS_LOC'} = $REG->get("tde_wallet_root") if($REG->exists("tde_wallet_root") && -d $REG->get("tde_wallet_root"));
+# Set KMS_CDB_JSON if HSM
+if ($vars{'HSM'}){
+  my $tde = tde->new($cfg_bkup{'DBNAME'}, { log => $LOG });
+  my $output = $tde->get_kms_cdb_json_loc($cfg_bkup{'SID'});
+  if (! defined $output){
+    $LOG->logprt("$alerts{e} Cannot get KMS CDB json path. \n");
+    return 1; 
+  }
+  if (! -e $output){
+    $LOG->logprt("$alerts{e} KMS CDB json file doesn't exist.\n");
+    return 1;
+  }
+  $cfg_bkup{'KMS_CDB_JSON'} = $output;
+}
+
+# BKUP TAG POLICY
+# This is the TAG applied to the incremental backups tabke by our policy
+# in obkup script. This is how OREC is aware of the existance of backups
+# to perform PITR
+my $OBKUP_POLICY = "dbaas_incr_backup";
+my $OBKUP_INCR_UNIQ = "dbaas_incr_backup";
+$OBKUP_INCR_UNIQ .= $datestring;
+
+my $OBKUP_FULL_UNIQ = "dbaas_full_backup";
+$OBKUP_FULL_UNIQ .= $datestring;
+
+# Table to specify whether to encrypt the disk backup
+# based on the database edition and bkup_type
+#   $encrypt_disk_map->{edition}->{bkup_type} = [0|1]
+#
+my $encrypt_disk_map = {
+                         enterprise => {
+                                         none    => 0,
+                                         disk    => 0,
+                                         diskoss => 1,
+                                         nfs     => 1,
+                                         zdlra   => 1,
+                                         dbrs    => 1,
+                                       },
+                         standard   => {
+                                         none    => 0,
+                                         disk    => 0,
+                                         diskoss => 1,
+                                         nfs     => 1,
+                                         zdlra   => 1,
+                                         dbrs    => 1,
+                                       },
+                       };
+
+my %edition = ("basic" => "EE",
+               "high-perf" => "HP",
+               "extreme-perf" => "XP" );
+
+my $short_ed = "SE";
+my $ed = $vars{'EDITION'};
+if ($ed eq "enterprise") {
+  my $bundle = $vars{'BUNDLE'};
+  $short_ed = $edition{$bundle};
+}
+
+my $version = $db->get_mversion();
+my $pdbf = "";
+$pdbf = $pdbs if (defined $pdbs);
+my $format; 
+if ($vars{'BKUP_TYPE'} eq "nfs") {
+    $format = "'" . $vars{'BKUP_NFS_MNT_DIR'} . "/%U-%d-$custom_format-$pdbf-$short_ed-$version-%I-%T'";
+} else {
+    $format = "'%U-%d-$custom_format-$pdbf-$short_ed-$version-%I-%T'";
+}
+my $bkup_archive_format = "%U-%d-$custom_format-Auto_Archive-$short_ed-$version-%I-%T";
+my $force = "";
+$force = "FORCE" if ($bkup_post_tde_migration && ( $vars{'BKUP_TYPE'} eq "oss" || $vars{'BKUP_TYPE'} eq "nfs" )) or ($xparams->{'rmanOptimization'} =~ m/OFF/i);
+# bkup tool supports four different backup configuration options
+#
+# BKUP_TYPE = disk     (primary backup is disk)
+# BKUP_TYPE = oss      (primary backup is oss)
+# BKUP_TYPE = diskoss  (primary backup is disk, secondary backup is oss)
+# BKUP_TYPE = nfs      (primary backup is a nfs share)
+# BKUP_TYPE = zdlra    (primary backup is zdlra)
+#
+# The secondary oss backup does a copy of the backup to oss tape
+
+# OSS backup commands
+#
+#Bug 30298575 - Restrict Delete obsolete in oss-only backup to device type SBT
+my $rman_bkup_data_primary_oss_full = [
+  "BACKUP FILESPERSET $filesperset_regular SECTION SIZE $section_size DEVICE TYPE SBT AS $compression BACKUPSET INCREMENTAL LEVEL 0 $force DATABASE TAG '$OBKUP_FULL_UNIQ' FORMAT $format;",
+  "BACKUP FILESPERSET $filesperset_al DEVICE TYPE SBT AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP FORMAT $format;",
+];
+
+my $rman_bkup_data_primary_oss_incr = [
+  "BACKUP FILESPERSET $filesperset_regular SECTION SIZE $section_size DEVICE TYPE SBT AS $compression BACKUPSET INCREMENTAL LEVEL 1 DATABASE TAG '$OBKUP_INCR_UNIQ' FORMAT $format;",
+  "BACKUP FILESPERSET $filesperset_al DEVICE TYPE SBT AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP FORMAT $format;",
+];
+
+# 03-15-2016 - bug 22915176 - We changed the clause that removed all archivelogs from disk after the
+# backup, as it was causing issues with DG and potentially with FLASHBACK feature. Instead we
+# are deleting all archivelogs already backed up to disk, and older than 1 day.
+# DISK backup commands
+my $rman_bkup_data_primary_disk = [
+  "RECOVER COPY OF DATABASE WITH TAG '$OBKUP_POLICY' UNTIL TIME 'SYSDATE - $vars{'RETENTION_WINDOW'}';",
+  "BACKUP SECTION SIZE $section_size INCREMENTAL LEVEL 1 FOR RECOVER OF COPY WITH TAG '$OBKUP_POLICY' DATABASE;",
+  "DELETE NOPROMPT OBSOLETE DEVICE TYPE DISK;",
+];
+
+# OSS secondary backup
+#   $rman_bkup_data_secondary_oss_pdisk - oss backup from plain disk backup (pdisk)
+#   $rman_bkup_data_secondary_oss_edisk - oss backup from encrypted disk backup (edisk)
+#
+my $rman_bkup_data_secondary_oss_pdisk = [
+  "set encryption off;",
+  "backup SECTION SIZE $section_size as copy database;",
+  "set encryption on;",
+  "backup SECTION SIZE $section_size device type sbt datafilecopy all not backed up FORMAT $format;",
+  "set encryption off;",
+  "BACKUP DEVICE TYPE SBT AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP FORMAT $format;",
+  "DELETE NOPROMPT OBSOLETE DEVICE TYPE SBT;",
+  "delete noprompt obsolete recovery window of $vars{'RETENTION_WINDOW'} days device type disk;",
+];
+my $rman_bkup_data_secondary_oss_edisk = [
+  "DELETE NOPROMPT OBSOLETE DEVICE TYPE SBT;",
+  "backup SECTION SIZE $section_size device type sbt backupset all not backed up FORMAT $format;",
+  "backup SECTION SIZE $section_size device type sbt datafilecopy all not backed up FORMAT $format;",
+  "BACKUP DEVICE TYPE SBT AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP FORMAT $format;",
+];
+
+my $rman_bkup_data_secondary_oss_edisk_incr = [
+  "backup SECTION SIZE $section_size device type sbt backupset all not backed up FORMAT $format;",
+  "BACKUP DEVICE TYPE SBT AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP FORMAT $format;",
+];
+
+my $rman_bkup_data_primary_zdlra_full = [
+  "BACKUP DEVICE TYPE SBT AS BACKUPSET CUMULATIVE INCREMENTAL LEVEL 0 $force TAG '$OBKUP_FULL_UNIQ' FILESPERSET 1 SECTION SIZE $section_size DATABASE PLUS ARCHIVELOG NOT BACKED UP FILESPERSET 32;",
+];
+
+my $rman_bkup_data_primary_zdlra_incr = [
+  "BACKUP DEVICE TYPE SBT AS BACKUPSET CUMULATIVE INCREMENTAL LEVEL 1 TAG '$OBKUP_INCR_UNIQ' FILESPERSET 1 SECTION SIZE $section_size DATABASE PLUS ARCHIVELOG NOT BACKED UP FILESPERSET 32;",
+];
+
+# Primary backup to nfs
+my $rman_bkup_data_primary_nfs_lvl0 = [
+  "SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$vars{'BKUP_NFS_MNT_DIR'}/%F';",
+  "BACKUP SECTION SIZE $section_size DEVICE TYPE DISK AS $compression BACKUPSET INCREMENTAL LEVEL 0 $force DATABASE TAG '$OBKUP_FULL_UNIQ';",
+  "BACKUP DEVICE TYPE DISK AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP;",
+];
+
+my $rman_bkup_data_primary_nfs_lvl1 = [
+  "SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$vars{'BKUP_NFS_MNT_DIR'}/%F';",
+  "BACKUP SECTION SIZE $section_size DEVICE TYPE DISK AS $compression BACKUPSET INCREMENTAL LEVEL 1 DATABASE TAG '$OBKUP_INCR_UNIQ';",
+  "BACKUP DEVICE TYPE DISK AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP;",
+];
+
+#determine AL retetion in FRA based on backup configuration
+my $archivelog_win = $vars{'AL_RETENTION_FRA'};
+
+#bug 2870171
+# DISK+OSS we want to keep archive logs for DISK RETENTION WINDOW day
+if ($vars{'BKUP_TYPE'} eq "diskoss") {
+  $archivelog_win = $vars{'DISK_RETENTION_WINDOW'} || 7;
+} 
+
+# This command is meant to be called in order to ship the archivelogs to OSS, when OSS or DISK+OSS
+my $rman_bkup_archivelog_oss = [
+  "BACKUP FILESPERSET $filesperset_al DEVICE TYPE SBT AS $al_compression BACKUPSET ARCHIVELOG $al_redo_switch NOT BACKED UP FORMAT '$bkup_archive_format';",
+];
+
+my $rman_bkup_archivelog_zdlra = [
+  "BACKUP DEVICE TYPE SBT AS BACKUPSET ARCHIVELOG $al_redo_switch NOT BACKED UP FORMAT '$bkup_archive_format';",
+  "DELETE NOPROMPT ARCHIVELOG ALL BACKED UP 1 TIMES TO SBT_TAPE COMPLETED BEFORE 'SYSDATE - $archivelog_win';",
+];
+
+#Bug 32837199: For DISK Only backup, there is no BACKUPSET ARCHIVELOG ALL NOT BACKED UP in
+#daily incremental backup.
+#AL backup job will backup archive logs and keep  last 24 hrs AL backup sets in FRA
+my $rman_bkup_archivelog_disk = [
+  "BACKUP DEVICE TYPE DISK AS $al_compression BACKUPSET ARCHIVELOG $al_redo_switch NOT BACKED UP;",
+  "DELETE NOPROMPT ARCHIVELOG ALL BACKED UP 1 TIMES TO DISK COMPLETED BEFORE 'SYSDATE - $archivelog_win';",
+];
+
+
+my $rman_bkup_archivelog_delete_disk = [
+  "DELETE NOPROMPT ARCHIVELOG ALL BACKED UP 1 TIMES TO SBT_TAPE COMPLETED BEFORE 'SYSDATE - $archivelog_win';",
+];
+
+# archivelog backup on nfs only
+my $rman_bkup_archivelog_nfs = [
+    "SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$vars{'BKUP_NFS_MNT_DIR'}/%F';",
+    "BACKUP AS $al_compression BACKUPSET ARCHIVELOG $al_redo_switch NOT BACKED UP FORMAT '$vars{'BKUP_NFS_MNT_DIR'}/$bkup_archive_format';",
+    "DELETE NOPROMPT ARCHIVELOG ALL BACKED UP 1 TIMES TO DISK COMPLETED BEFORE 'SYSDATE - $archivelog_win';",
+];
+
+# This command is meant to cleanup the archivelogs when backup option is ZDLRA and Real Time Redo Transport is enabled.
+my $rman_bkup_archivelog_zdlra_cleanup = [
+  "DELETE NOPROMPT ARCHIVELOG ALL BACKED UP 1 TIMES TO SBT_TAPE COMPLETED BEFORE 'SYSDATE - $archivelog_win';",
+];
+
+# This command is meant to cleanup the archivelogs when backup option is chosen as NONE
+my $rman_bkup_archivelog_cleanup = [
+  "CROSSCHECK ARCHIVELOG ALL;",
+  "DELETE NOPROMPT archivelog until time 'sysdate - $archivelog_win';",
+];
+
+# This command is for backing up current control file to OSS
+my $rman_bkup_current_controlfile_oss = [
+  "BACKUP FILESPERSET $filesperset_al DEVICE TYPE SBT AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP FORMAT $format;",
+  "BACKUP DEVICE TYPE SBT AS $compression BACKUPSET CURRENT CONTROLFILE FORMAT $format;",
+];
+
+#Bug 29246016: With CDB$ROOT and ALL PDB sharing same backup destination ,
+#Changing ROOT database backup to incremental level 1 in every PDB backup.
+#This change is to :
+#1. Avoid taking multiple FULL ROOT database backups.
+#2. Aid faster recovery of CDB$ROOT using Incremental Level 1 backups.
+#
+my $rman_bkup_pdb_oss_full = [
+  "CONFIGURE CONTROLFILE AUTOBACKUP ON;",
+  "BACKUP FILESPERSET $filesperset_regular SECTION SIZE $section_size AS $compression BACKUPSET INCREMENTAL LEVEL 0 $force DATABASE ROOT FORMAT $format;",
+  "BACKUP FILESPERSET $filesperset_regular SECTION SIZE $section_size DEVICE TYPE SBT AS $compression BACKUPSET INCREMENTAL LEVEL 0 $force PLUGGABLE DATABASE pdb_name TAG '$OBKUP_INCR_UNIQ' FORMAT $format;",
+  "BACKUP FILESPERSET $filesperset_al DEVICE TYPE SBT AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP FORMAT $format;",
+  "BACKUP AS $compression BACKUPSET CURRENT CONTROLFILE FORMAT $format;",
+];
+
+my $rman_bkup_pdb_oss_incr = [
+  "CONFIGURE CONTROLFILE AUTOBACKUP ON;",
+  "BACKUP FILESPERSET $filesperset_regular SECTION SIZE $section_size AS $compression BACKUPSET INCREMENTAL LEVEL 1 DATABASE ROOT FORMAT $format;",
+  "BACKUP FILESPERSET $filesperset_regular  SECTION SIZE $section_size DEVICE TYPE SBT AS $compression BACKUPSET INCREMENTAL LEVEL 1 PLUGGABLE DATABASE pdb_name TAG '$OBKUP_INCR_UNIQ' FORMAT $format;",
+  "BACKUP FILESPERSET $filesperset_al DEVICE TYPE SBT AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP FORMAT $format;",
+  "BACKUP AS $compression BACKUPSET CURRENT CONTROLFILE FORMAT $format;",
+];
+
+
+#Bug 29246016: With CDB$ROOT and ALL PDB sharing same backup destination ,
+#Changing ROOT database backup to incremental level 1 in every PDB backup.
+#This change is to :
+#1. Avoid taking multiple FULL ROOT database backups.
+#2. Aid faster recovery of CDB$ROOT using Incremental Level 1 backups.
+#
+
+
+my $rman_bkup_pdb_zdlra = [
+  "CONFIGURE CONTROLFILE AUTOBACKUP ON;",
+  "BACKUP SECTION SIZE $section_size AS BACKUPSET INCREMENTAL LEVEL 1 DATABASE ROOT FORMAT $format;",
+  "BACKUP DEVICE TYPE SBT AS BACKUPSET CUMULATIVE INCREMENTAL LEVEL 1 PLUGGABLE DATABASE pdb_name TAG '$OBKUP_INCR_UNIQ' SECTION SIZE $section_size;",
+  "BACKUP DEVICE TYPE SBT AS BACKUPSET ARCHIVELOG ALL NOT BACKED UP;",
+  "BACKUP AS BACKUPSET CURRENT CONTROLFILE FORMAT $format;",
+];
+
+#Bug 29286392
+#'SYSDATE - retention_window' and not 'SYSDATE - $retention_window'
+#At this point $retention_window is 0. The retention window value is calcluated in execute_backup and
+# we correct the replace string retention_window with the calculated value.
+#
+# Bug 29632104
+# When format is specified for DISK backups, RMAN is backing up files to $OH/dbs and not FRA.
+# As per MOS DOC ID 404854.1, With the organization of the FRA (sub-directories which include database
+# name, etc) there is no need to add a FORMAT to the backup command.
+
+#Bug 29246016: With CDB$ROOT and ALL PDB sharing same backup destination ,
+#Changing ROOT database backup to incremental level 1 in every PDB backup.
+#This change is to :
+#1. Avoid taking multiple FULL ROOT database backups.
+#2. Aid faster recovery of CDB$ROOT using Incremental Level 1 backups.
+#
+
+my $rman_bkup_pdb_disk = [
+  "BACKUP SECTION SIZE $section_size AS $compression BACKUPSET INCREMENTAL LEVEL 1 DATABASE ROOT;",
+  "RECOVER COPY OF DATABASE WITH TAG '$OBKUP_POLICY' UNTIL TIME 'SYSDATE - retention_window';",
+  "BACKUP SECTION SIZE $section_size INCREMENTAL LEVEL 1 FOR RECOVER OF COPY WITH TAG '$OBKUP_POLICY' PLUGGABLE DATABASE pdb_name;",
+  "DELETE NOPROMPT OBSOLETE DEVICE TYPE DISK;",
+  "BACKUP AS $compression BACKUPSET CURRENT CONTROLFILE;",
+];
+
+# Bug 28561825 Backup process failed because OSS is full
+# Since we are not deleting backups from oss in pdb_diskoss
+
+#Bug 29246016: With CDB$ROOT and ALL PDB sharing same backup destination ,
+#Changing ROOT database backup to incremental level 1 in every PDB backup.
+#This change is to :
+#1. Avoid taking multiple FULL ROOT database backups.
+#2. Aid faster recovery of CDB$ROOT using Incremental Level 1 backups.
+#
+
+my $rman_bkup_pdb_diskoss = [
+  "BACKUP SECTION SIZE $section_size AS $compression BACKUPSET INCREMENTAL LEVEL 1 DATABASE ROOT FORMAT $format;",
+  "backup SECTION SIZE $section_size device type sbt backupset all not backed up FORMAT $format;",
+  "backup SECTION SIZE $section_size device type sbt datafilecopy all not backed up FORMAT $format;",
+  "delete noprompt obsolete device type sbt;",
+  "BACKUP AS $al_compression BACKUPSET CURRENT CONTROLFILE FORMAT $format;",
+];
+
+my $rman_bkup_pdb_nfs_full = [
+    "CONFIGURE CONTROLFILE AUTOBACKUP ON;",
+    "SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$vars{'BKUP_NFS_MNT_DIR'}/%F';",
+    "BACKUP SECTION SIZE $section_size AS $compression BACKUPSET INCREMENTAL LEVEL 1 DATABASE ROOT FORMAT $format;",
+    "BACKUP SECTION SIZE $section_size DEVICE TYPE DISK AS $compression BACKUPSET INCREMENTAL LEVEL 0 $force PLUGGABLE DATABASE pdb_name TAG '$OBKUP_INCR_UNIQ';",
+    "BACKUP DEVICE TYPE DISK AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP;",
+    "BACKUP AS $compression BACKUPSET CURRENT CONTROLFILE FORMAT $format;",
+];
+
+my $rman_bkup_pdb_nfs_incr = [
+    "CONFIGURE CONTROLFILE AUTOBACKUP ON;",
+    "SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '$vars{'BKUP_NFS_MNT_DIR'}/%F';",
+    "BACKUP SECTION SIZE $section_size AS $compression BACKUPSET INCREMENTAL LEVEL 1 DATABASE ROOT FORMAT $format;",
+    "BACKUP SECTION SIZE $section_size DEVICE TYPE DISK AS $compression BACKUPSET INCREMENTAL LEVEL 1 PLUGGABLE DATABASE pdb_name TAG '$OBKUP_INCR_UNIQ';",
+    "BACKUP DEVICE TYPE DISK AS $al_compression BACKUPSET ARCHIVELOG ALL NOT BACKED UP;",
+    "BACKUP AS $compression BACKUPSET CURRENT CONTROLFILE FORMAT $format;",
+];
+
+my $rman_bkup_diskpurge_ctlfile_bkup = [
+  "delete noprompt obsolete recovery window of $vars{'RETENTION_WINDOW'} days device type disk;",
+  "BACKUP CURRENT CONTROLFILE;",
+];
+
+my $rman_bkup_diskpurge_ctlfile_bkupset = [
+   "delete noprompt obsolete recovery window of $vars{'RETENTION_WINDOW'} days device type disk;",
+   "BACKUP AS $compression BACKUPSET CURRENT CONTROLFILE;",
+];
+
+my $rman_ctlfile_autobackup_fmt = [
+  "SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE SBT TO '%F-$custom_format';"
+];
+
+#my $OCMD = "su - oracle ";
+my $TARGET = "/"; # this is changed if a standby is used
+
+$backup_handler = _init_bkup();
+
+my ($proxy_host, $proxy_port) = ($REG->get("oss_proxy_host"), $REG->get("oss_proxy_port"));
+if (not $proxy_host) {
+  ($proxy_host, $proxy_port) = $backup_handler->get_proxy();
+}
+
+
+# TO DO : Update to use the logger.pm module from Diego
+# my $log = create_log();
+
+## To backup Archivelog only.
+#  BUG 22460802 - This method will just perform archivelogs cleanup when backup
+#                option is NONE.
+
+my $CNS_BACKUP_FAILED = "backup failed";
+my $CNS_BACKUP_START = "backup start";
+my $CNS_BACKUP_COMPLETE = "backup complete";
+
+
+
+sub bkup_archivelogs {
+    my $opts = shift;
+    my $is_atp = $opts->{is_atp} // 0;
+    my $max_channels = 0;
+    if ($vars{'AL_BKUP_CHANNELS_NODE'} eq 'default') {
+       $max_channels = 8;
+    };
+
+    my $channel_opts = { dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, operation => 'AL_BACKUP', tns_services => \@tns_services_list};
+    if ($max_channels != 0) {
+       $channel_opts->{max_channels} = $max_channels;
+    }
+
+
+    $LOG->logerr({ errorinfo => { ID => "COMMON_CANNOT_ACCESS_CATALOG_ERR", ARGS => [$dbname, $logfile]}}) if ($vars{'BKUP_CATALOG'} eq "yes" and $vars{'BKUP_CAT_CONN'} eq "");
+    $LOG->logprt("$alerts{i} ARCHIVELOGS MANAGEMENT\n");
+    if ( ( $cron && !$backup_handler->is_archivelog_backup_enabled() ) || $vars{'BKUP_TYPE'} eq "none" ) {
+      cleanup_fra();
+    } elsif ( $vars{'BKUP_TYPE'} eq "disk" ) {
+        $LOG->logprt("$alerts{i} BACKING UP TO DEFAULT RMAN DEVICE\n");
+        # ER 28489008: get the list of required rman configure commands.
+        $channel_opts->{bkp_type} = "disk";
+        my $rman_disk_commands = $backup_handler->rman_config_common($channel_opts);
+        my $bkup_errors  = execute_backup($rman_bkup_archivelog_disk, {rman_cfg => $rman_disk_commands});
+        if (@$bkup_errors) {
+              my $error_report = "$alerts{e} Cannot complete the Archivelogs Backup to Local Storage\n";
+              foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+              }
+              $LOG->logprt($error_report);
+              report_to_adminlogs($error_report);
+              $LOG->logerr({ errorinfo => { ID => "BKUP_EX_ARCHIVELOG_BACKUP_ERR", ARGS => ["Local Storage",$logfile]}});
+            }
+    } elsif ( $vars{'BKUP_TYPE'} eq "nfs" ) {
+        $LOG->logprt("$alerts{i} BACKING UP TO SHARED STORAGE\n");
+        $channel_opts->{bkp_type} = "nfs";
+        my $rman_nfs_commands = $backup_handler->rman_config_common($channel_opts);
+        my $bkup_errors  = execute_backup($rman_bkup_archivelog_nfs, {rman_cfg => $rman_nfs_commands});
+        if (@$bkup_errors) {
+              my $error_report = "$alerts{e} Cannot complete the Archivelogs Backup to Shared Storage\n";
+              foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+              }
+              $LOG->logprt($error_report);
+              report_to_adminlogs($error_report);
+              $LOG->logerr({ errorinfo => { ID => "BKUP_EX_ARCHIVELOG_BACKUP_ERR", ARGS => ["Shared Storage",$logfile]}});
+            }
+    } elsif ( $vars{'BKUP_TYPE'} eq "diskoss" or $vars{'BKUP_TYPE'} eq "oss" ) {
+        $LOG->logprt("$alerts{i} BACKING UP TO OSS\n");
+
+        my $rman_oss_commands = [];
+        my $rman_disk_commands = [];
+        # Get the rman commands to backup archive log to oss
+        $channel_opts->{bkp_type}  =  "oss";
+        $rman_oss_commands = $backup_handler->rman_config_common($channel_opts);
+        # Get the rman commands to delete archive logs from disk 
+        $channel_opts->{bkp_type} = "disk";
+        $rman_disk_commands = $backup_handler->rman_config_common($channel_opts);
+
+        my $bkup_errors  = execute_backup($rman_bkup_archivelog_oss, {rman_cfg => $rman_oss_commands, encrypt => "ON"});
+        my $bkup_errors1 = execute_backup($rman_bkup_archivelog_delete_disk, {rman_cfg => $rman_disk_commands, encrypt => "ON"});
+        if (@$bkup_errors || @$bkup_errors1) {
+            my $error_report = "$alerts{e} Cannot complete the Archivelogs Backup to Cloud Storage\n";
+            foreach (@$bkup_errors) {
+                $error_report = "${error_report}$_";
+            }
+            foreach (@$bkup_errors1) {
+                $error_report = "${error_report}$_";
+            }
+            $LOG->logprt($error_report);
+            report_to_adminlogs($error_report);
+            $LOG->logerr({ errorinfo => { ID => "BKUP_EX_ARCHIVELOG_BACKUP_ERR", ARGS => ["Cloud Storage",$logfile]}});
+        }
+    }elsif ( $vars{'BKUP_TYPE'} eq "zdlra" ) {
+        $LOG->logprt("$alerts{i} BACKING UP TO ZDLRA\n");
+        $opts->{bkp_type} =  "zdlra";
+        my $rman_zdlra_commands = $backup_handler->rman_config_common($opts);
+        my $bkup_errors  = execute_backup($rman_bkup_archivelog_zdlra, {rman_cfg => $rman_zdlra_commands, encrypt => "OFF"});
+        if (@$bkup_errors) {
+            my $error_report = "$alerts{e} Cannot complete the Archivelogs Backup to Recovery Appliance\n";
+            foreach (@$bkup_errors) {
+                $error_report = "${error_report}$_";
+            }
+            $LOG->logprt($error_report);
+            report_to_adminlogs($error_report);
+            $LOG->logerr({ errorinfo => { ID => "BKUP_EX_ARCHIVELOG_BACKUP_ERR", ARGS => ["Recovery Appliance",$logfile]}});
+        }
+    }elsif ( $vars{'BKUP_TYPE'} eq "dbrs" ) {
+        $LOG->logprt("$alerts{i} BACKING UP TO ZDLRA\n");
+        $channel_opts->{bkp_type} = "dbrs";
+        my $rman_dbrs_commands = $backup_handler->rman_config_common($channel_opts);
+        #Executing zdlra commands to avoid unexpected bifurcation in future. Most of ZDLRA imorvements in commands should apply for DBRS
+        my $bkup_errors  = execute_backup($rman_bkup_archivelog_zdlra, {rman_cfg => $rman_dbrs_commands, encrypt => "OFF"});
+        if (@$bkup_errors) {
+            my $error_report = "$alerts{e} Cannot complete the Archivelogs Backup to DBRS\n";
+            foreach (@$bkup_errors) {
+                $error_report = "${error_report}$_";
+            }
+            $LOG->logprt($error_report);
+            report_to_adminlogs($error_report);
+            $LOG->logerr({ errorinfo => { ID => "BKUP_EX_ARCHIVELOG_BACKUP_ERR", ARGS => ["Recovery Appliance",$logfile]}});
+        }
+    }
+
+    # perform ADB-D specific processing
+    if ($is_atp) {
+      require DBAAS::adb::atp_cdb;
+      my $atp_cdb = atp_cdb->new($dbname, {log => $LOG,
+                                           bypass_request_lock => 1});
+      $atp_cdb->report_media_recovery();
+    }
+
+    $LOG->logprt("$alerts{i} ARCHIVELOG BACKUP COMPLETED\n");
+    return 0;
+}
+
+
+#========================================================
+#               MAIN SCRIPT EXECUTION                   |
+#========================================================
+my $mode_result = 0;           # result of the option
+validate_pdb() if defined $pdbs;
+
+my $retries = 0;
+my $retry_limit = 60;
+my $atp = atp->new({log => $LOG});
+my $is_atp = $atp->get_atp_enabled();
+
+
+#Bug 31264394:  RDBMS 14078947 - SELECT FROM V$RMAN_STATUS VERY SLOW
+#check was added for ATP where we can get many PDB backup requests
+#and hence had to serialize it.
+#As as fix for bug 31264394, no treshold check for non ATP
+if ($is_atp) {
+  while(get_rman_total_sessions() > $rman_threshold){
+     if ($retries <= $retry_limit){
+        $LOG->logprt("Retries: $retries\n");
+        $LOG->logprt("Waiting for an RMAN session to be available.\n");
+        $LOG->logprt("Please wait...\n");
+        sleep(30);
+        $retries += 1;
+     }else{
+        $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => ["Retrieving active RMAN sessions", $logfile]}});
+     }
+  }
+}
+#-------------------------------------------------------
+
+#--------------------------------------------------------
+
+if($vars{'BKUP_TYPE'} eq "oss" || $vars{'BKUP_TYPE'} eq "diskoss") {
+my $bkup = bkup_validate->new({"LOG" => $LOG, "dbname" => $dbname, "RAC" => $RAC});
+$oss_opts = {
+            "oss_proxy_host" => $proxy_host,
+            "oss_proxy_port" => $proxy_port,
+            "dbname" => $dbname,
+            "bkup_oss_idcs_oauth_url" => $REG->get("bkup_oss_idcs_oauth_url"),
+            "bkup_oss_url" => $REG->get("bkup_oss_url"),
+            "bkup_oss_user" => $REG->get("bkup_oss_user"),
+            "bkup_oss_passwd" => $REG->get("bkup_oss_passwd"),
+            "opc_timeout" =>  60,
+            "opc_attempts" => $OSS_RETRY
+          };
+          #Bug 31697576 - ADD RETRY LOGIC TO VALIDATE OSS CONNECTIVITY BEFORE BACKUP EXECUTION
+          $bkup->validate_oss_swift_connection($oss_opts);
+          #Verify if Valid certificate chain is available
+          validate_oss_channel_connection();
+
+}
+
+
+#-------------------------------------------------------
+#              Start: OSS<--->DBRS Transition
+#-------------------------------------------------------
+
+if ( $vars{'TRANSITION_STATE'} ) {
+  backup_flow_for_transition();
+  exit 0;
+}
+
+#-------------------------------------------------------
+#               End: OSS<--->DBRS Transition
+#-------------------------------------------------------
+
+
+#-------------------------------------------------------
+#                 execution modes
+#-------------------------------------------------------
+if ($mode) {
+    $elogger_params = {
+        operation=>"obkup",
+        action=>$mode,
+        info=>{status=>"starting",},
+    };
+    $LOG->register($elogger_params);
+
+    if ($mode eq "cat_status"){
+            $LOG->logprt("$alerts{i} ########## CONFIGURATION ##########\n");
+            $LOG->logprt("$alerts{i} -> Backup:\n");
+#            $LOG->logprt("$alerts{i}    Data:$vars{'BKUP_DATA'}\n";
+            $LOG->logprt("$alerts{i}    Config files:$vars{'BKUP_CFG_FILES'}\n");
+            $LOG->logprt("$alerts{i}    Edition: $vars{'EDITION'}\n");
+            $LOG->logprt("$alerts{i}    Type: $vars{'BKUP_TYPE'}\n");
+            $mode_result = catalog_connection();
+        }
+    elsif ($mode eq "help"){
+            $LOG->logprt("valid options:\n");
+            $LOG->logprt(" *) obkup -dbname=orcl\n");
+            $LOG->logprt(" *) obkup -cat_status -dbname=orcl\n");
+            $LOG->logprt(" *) obkup -keep -delete=MyKeepForeverBackup -dbname=orcl\n");
+            $LOG->logprt(" *) obkup -keep -tag=MyKeepForeverBackup -dbname=orcl\n");
+    }
+    ###############################
+    # FOREVER BACKUP KEEP OPTIONS #
+    ###############################
+
+    elsif ($mode eq "keep"){
+            if(defined $pdbs) {
+# BUG 28712373: Enable longterm backup for PDB
+#                $LOG->logprt("Keep forever is not supported for pdbs\n";
+#                exit 1;
+		$LOG->logprt("Keep forever to run for pdbs: $pdbs\n");
+            }
+
+            ###########################
+            #   KEEP TAG OPTION       #
+            ###########################
+            if ($keep_option eq "tag"){
+                 #tag validation
+                 if ($keep_option_tag eq "" || not defined $keep_option_tag){
+                     my $error = "$alerts{w} Long-term retention backups requires a tag to identify the restore point\n e.g ./obkup keep tag <your tag> , please introduce the tag parameter";
+                     $elogger_params->{info} = {
+                         status=>"Failed",
+                         error=>$error,
+                     };
+                     $LOG->register($elogger_params);
+
+                     $LOG->logprt($error);
+                     exit 1;
+                 }
+                 $backup_mode = "longterm";
+                 $mode_result = keep_forever();
+
+		 #Bug 30102338: tdeWalletLoc backupReport parameter is wrong for Longterm + OSS backup / config files were not being loaded to OSS
+		 if(!cfg_main()){
+                        $LOG->logprt("$alerts{i} : longterm, Config files backup ended successfully\n");
+                 }else{
+			my $error = "$alerts{e} : longterm, Cannot complete config files backup\n"; 
+                    	$elogger_params->{info} = {
+                        	 status=>"Failed",
+                        	 error=>$error,
+                    	 };
+	                $LOG->register($elogger_params);
+                        $LOG->logprt($error);
+                        $LOG->logerr({ errorinfo => { ID => "BKUP_EX_CFG_FILES_BACKUP_ERR", ARGS => [$logfile]}});
+                 }
+
+               }
+            ###########################
+            #      KEEP DELETE        #
+            ###########################
+            elsif ($keep_option eq "delete"){
+                 # validation of the backup tag
+                if ($keep_option_tag eq "" || not defined $keep_option_tag){
+                    my $error =  "$alerts{e} Please introduce the name of the backup to be deleted, e.g ./obkup keep delete <Your backup>\n";
+                    $elogger_params->{info} = {
+                        status=>"Failed",
+                        error=>$error,
+                    };
+                    $LOG->register($elogger_params);
+                    $LOG->logerr({ errorinfo => { ID => "COMMON_INVALID_SYNTAX_CLI_ERR", ARGS => ["./obkup keep delete <Your backup>", $logfile]}}); 
+                }
+                $mode_result = delete_forever();
+            }
+            else {
+                 $LOG->logprt("$alerts{e} Invalid option, available options: \n *) -keep -tag=<backup_tag>\n *) -keep -delete=<backup>\n");
+                 $mode_result = 1;
+            }
+    }
+    elsif ($mode =~ m/validatearchive/ ) {
+            $mode_result = archivelog_restore_validation();
+    }
+    elsif ($mode =~ m/archivelog/ or $archivelog eq "yes" ) {
+            $mode_result = bkup_archivelogs({is_atp => $is_atp});
+    }
+    elsif ($mode =~ m/currentcf/) {
+            $mode_result = backup_currentcf();
+    }
+    elsif ($mode =~ m/delete_obsolete/) {
+            $mode_result = $backup_handler->delete_obsolete({tns_services => \@tns_services_list})? 0: 1;
+    }
+    elsif ($mode =~ m/dbname/ ) {
+            $mode_result =  main();
+    }
+    else {
+            $LOG->logprt("$alerts{w} $mode option not available\n");
+        }
+
+    $elogger_params->{info} = {
+        status=>($mode_result == 0)? "Success":"Failed",
+        mode_result=>$mode_result,
+    };
+    $LOG->register($elogger_params);
+
+    exit $mode_result;
+}
+
+if ( $vars{'DG_OBSERVER_HOST'} eq "yes" ) {
+    $cfg_bkup{'MODE'} = "dgobs";
+    $mode_result = &cfg_main();
+    exit $mode_result;
+}
+#-------------------------------------------------------
+#      Regular execution with no parameters
+#-------------------------------------------------------
+$mode_result =  main();
+exit $mode_result;
+
+#           END OF THE SCRIPT MAIN EXECUTION
+#========================================================
+
+#########################################################
+#              BACKUP MAIN FUNCTIONS                    #
+#########################################################
+
+#########################################################
+## GETS RMAN SESSIONS WITH COMPLETED OR RUNNING STATUS  #
+#########################################################
+sub get_rman_total_sessions{
+# Queries for RMAN sessions with a "RUNNING%"" status or "COMPLETED%" (Completed within the last 2 minutes...)
+# There's a 2 minute window between the validate backups step (crosscheck) and the backup being taken. Thus (as a precaution) we consider the RMAN sessions running and also the ones in "completed%" state during this time frame for the total RMAN session count.
+    my $rman_session_count = $DB->q1("with a AS (select max(end_time) mtime from v\$rman_status) SELECT COUNT(1) FROM V\$RMAN_STATUS,a WHERE STATUS LIKE 'RUNNING\%' OR  (a.mtime<sysdate and END_TIME > SYSDATE - 2/1440 )");
+    $LOG->logprt("Total of RMAN sessions: $rman_session_count\n"); 
+    return $rman_session_count;
+ }
+##################################
+# CREATES A KEEP FOREVER BACKUP  #
+##################################
+sub keep_forever{
+    my $result;
+    $LOG->logprt("$alerts{i} LONG TERM BACKUP RETENTION #####\n");
+    ###########
+    # NOTES: IF BACKUP OPTION IS ENABLED AND WE CANNOT TO CONNECT TO CATALOG
+    # THE BACKUP WILL BE ABORTED TO PROVIDE CONSISTENCY WITH PREVIOUS BACKUPS
+    # OTHERWISE IF NO CATALOG SETTING ENABLED WE WILL USED 5000 DAYS VALUE
+    if ($vars{'BKUP_CATALOG'} eq "yes" and $vars{'BKUP_CAT_CONN'} eq ""){
+        $LOG->logprt("$alerts{i} Unable to connect to catalog, and your settings requires it\n");
+        exit 1;
+    }
+    # creating objects
+    $LOG->logprt("$alerts{i} STARTING LONG TERM BACKUP\n");
+
+#BUG 28712373: Enable longterm backup for PDB
+#	       Added pdb argument to forever_backup
+    $result = $backup_handler->forever_backup($keep_option_tag, $uuid_cid,  {pdbs=>$pdbs, format=>$format, tns_services => \@tns_services_list, dg_enabled => $dataguard_state, dg_mode => $dataguard_mode});
+    $autobackup_tag = $keep_option_tag;
+    if ( $result ) {
+        $LOG->logprt("$alerts{e} : longterm backup failed \n");
+        $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["Longterm backup", "cloud storage",$logfile]}});
+    }
+    if ((defined $autobackup_tag) && ($autobackup_tag ne "")) {
+        #by bkup_api - apiv2/apiv1 .Any Changes to this line pattern should be synced with other files.
+        $LOG->logprt(" -> Last KEEP backup TAG Found in Backup Session:$autobackup_tag\n");
+    }
+    $LOG->logprt("$alerts{i} RMAN STEPS FINISHED\n");
+    # --------- validation and verification ----------
+    #my ($validate, $items) = $backup_handler->crosscheck();
+    #Validate backup pieces after longterm backup usin restore preview validate header
+    #validate = 1 refers to ORA and MissingBkupPiece errors
+    restore_preview_validate_header();
+    return $result;
+}
+##################################
+# DELETES A KEEP FOREVER BACKUP  #
+#
+##################################
+sub delete_forever{
+    $LOG->logprt("$alerts{i} LONG TERM BACKUP RETENTION #####\n");
+    if ($vars{'BKUP_CATALOG'} eq "yes" and $vars{'BKUP_CAT_CONN'} eq ""){
+        $LOG->logprt("$alerts{i} Unable to connect to catalog, and your settings requires it\n");
+        exit 1;
+    }
+    $LOG->logprt("$alerts{i} DELETING LONG TERM BACKUP\n");
+    my $result = $backup_handler->delete_backup($keep_option_tag, $isBackupMetadataOnly);
+    $LOG->logprt("$alerts{i} RMAN COMMANDS FINISHED\n");
+    return $result;
+}
+
+
+# Function:
+# Description: main()
+#  Executes the normal behavior which is perform a backup
+sub main {
+    # restore validation
+    if ($do_reval > 0) {
+        my $rv_result = restore_validation($rv_mode);
+        return $rv_result;
+    }
+    # ensure AUTOBACKUP feature is enabled for DG.
+    my $autobackup_on = ["CONFIGURE CONTROLFILE AUTOBACKUP ON;",];
+    $backup_handler->rman($autobackup_on);
+    $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_INVALID_PARAMETER_ERR", ARGS => ["NFS + OSS backup configuration"]}}) if (($vars{'BKUP_NFS'} eq "yes") and ($vars{'BKUP_OSS'} eq "yes"));
+
+    # initial validation for catalog
+    $LOG->logprt("################################ PERIODICAL BACKUP STARTING ################################\n");
+    $LOG->logprt("$alerts{i} DB instance: $dbname\n");
+    # analyze the catalog state
+    if ($vars{'DATAGUARD'} eq "yes"){
+       $LOG->logprt("$alerts{i} Dataguard environment\n");
+       # identifying type of node
+       dg_mode(); #
+       $LOG->logprt("$alerts{i} Running on: $vars{'DG_MODE'}\n");
+    }
+    if ( ($vars{'CLUSTER'} !~ m/rac/) && ($vars{'CLUSTER'} ne "siasm") ) {
+      # General validation for the case where there is no enough space
+      my $prerequiste_success =  $backup_handler->bkup_prerequisites();
+      return 1 if (!$prerequiste_success);
+    }
+
+    # @@@@@@@@@@@@@@@@@ VALIDATION OF BACKUPS @@@@@@@@@@@@@@@@@@@@
+    # Validate level1 backups using restore preview validate header
+    # If any failures found, Execute a level0 backup
+    my @date = split(" ", localtime(time));
+    my $today = $date[0];
+    my $forceL0 = 0;
+    my ($cur_date,$exit_status) = $LOG->logexe("$DATE_PATH +%m%d%y");
+    $LOG->logprt("last L0 date is $vars{'LAST_L0_DATE'}\n");
+    $LOG->logprt("flag level0 = $level0\n");
+    #Derive if the current backup is a level0 backup
+    $levelZeroFlag  =    ($level0 == 1) || ( ($level1 != 1) && ( ($today eq $vars{'LVL0_DAY'} && $vars{'LAST_L0_DATE'} ne $cur_date)  || ($vars{'LAST_L0_DATE'} eq "" && !level0_bkup_exists()))) ? 1 : 0;
+    $LOG->logprt("flag level0 11111 = $levelZeroFlag\n");
+    if ( ($vars{'BKUP_TYPE'} ne "zdlra" and $vars{'BKUP_TYPE'} ne "dbrs") && !defined $pdbs && !$levelZeroFlag) {
+    	$LOG->logprt("$alerts{i} Validating the backup repository ...... \n");
+	my ($validate, $errors, $error_data) = $backup_handler->restore_validate_preview_header({print_to_log => "yes", operation => "CDB_BACKUP", tns_services_list => \@tns_services_list});
+    
+    	if ($validate == 0){ # no error
+        	$LOG->logprt("$alerts{i}      All backup pieces are ok\n");
+    	} elsif ($validate == 3) { # Corrupt
+		$LOG->logprt("$alerts{i} Restore validate reported corruption, check log $logfile. \n");
+       		$LOG->logprt("$alerts{i} Level0 backup should be initiated. \n");
+	        $forceL0 = 1;
+    	} elsif ($validate == 2) { # Could not locate
+		$LOG->logprt("$alerts{i} Restore validate could not locate some backups, check log $logfile. \n");
+       		$LOG->logprt("$alerts{i} Level0 backup should be initiated. \n");
+	        $forceL0 = 1;
+    	} elsif ($validate == 1) { # Missing datafiles 
+		$LOG->logprt("$alerts{i} Restore validate reported missing datafiles, check log $logfile. \n");
+                my $df_backup_opts = { print_to_log => "yes", tns_services_list => \@tns_services_list,
+dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, tns_services => \@tns_services_list, section_size => $section_size, compression => $compression, operation => "DATAFILE_BACKUP", tag => $OBKUP_INCR_UNIQ , format => $format, filesperset => $filesperset_regular};
+
+                my ($result, $error) = $backup_handler->backup_missing_datafiles($error_data, $df_backup_opts);
+                $forceL0 = 1 if ($result);
+    	} else {
+        	my @kbhs_errors = grep {m/KBHS-00600|KBHS-00715|KBHS-00719|KBHS-01405|KBHS-00700/i} @$errors;
+        	my $kbhs_error_report = (@kbhs_errors != 0) ? join("\n", @kbhs_errors) : "No KBHS error found";
+        	$LOG->logerr({ errorinfo => { ID => "BKUP_EX_VERIFY_BACKUP_PIECES_ERR", ARGS => [$dbname,$kbhs_error_report,$logfile]}});  
+   	 }
+    } 
+
+#32180240: remove tde wallet password validation from backup execution    
+#    $LOG->logprt("$alerts{i} Validating the TDE wallet ...... \n");
+#    my $tde = tde->new($dbname,  {log => $LOG} );
+#    if($tde->is_enabled() && !($tde->is_hsm_configured())) {
+#        my ($tdeout, $tdemsg) = $tde->check_mkey_match();
+#        if ($tdeout != 0) {
+#            $LOG->logprt("$alerts{e} The TDE check was unsuccessful:\n");            
+#            $LOG->logprt("$alerts{e} $tdemsg\n");
+#            return 1;
+#        } else {
+#            $LOG->logprt("$alerts{i} TDE check successful.\n");
+#        }
+#    } else {
+#        $LOG->logprt("$alerts{i} TDE is not configured. No action is necessary.\n");
+#    }
+    # @@@@@@@@@@@@@@@@@ END OF BACKUPS VALIDATION @@@@@@@@@@@@@@@@
+
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    # @@@@@@@@@@@@@@@@@@ BACKUP OF DATAFILES CODE @@@@@@@@@@@@@@@@
+#    if ($vars{'BKUP_DATA'} eq "yes") {
+#        $LOG->logprt("$alerts{i} Starting backup of datafiles\n";
+        if ($vars{'BKUP_TYPE'} eq "oss") {
+          ## BACKUP TO OSS AS PRIMARY ###
+          # Fix for bug 21362805
+          # Note: This OSS backup uses minimal space at local
+          # storage, recovery times may increase but it
+          # would be more cost efficient in EXADATA/RAC environments.
+          if ( defined $pdbs ) {
+            $LOG->logprt("$alerts{i} Performing Backup to Cloud Storage\n");
+            #PDB must have a custom tag to avoid file name collitions. Bug 28713109
+            #---- starts rman session
+            my $rman_oss_commands = [];
+            my $rman_bkup_pdb_oss;
+            if ( $levelZeroFlag == 1 ) {
+                $rman_bkup_pdb_oss = $rman_bkup_pdb_oss_full;
+                $LOG->logprt("$alerts{i} Performing Full Backup to Cloud Storage\n");
+            }
+            else {
+                $rman_bkup_pdb_oss = $rman_bkup_pdb_oss_incr;
+                $LOG->logprt("$alerts{i} Performing Incremental Backup to Cloud Storage\n");
+            }
+            ### Need to set controlfile auto backup format when custom format is specified ###
+            # Bug 29709489
+            # If not custom format is set, generate a unique identifier to avoid duplicate issues.
+            if($custom_format ne  "") {
+              unshift (@$rman_bkup_pdb_oss, @$rman_ctlfile_autobackup_fmt);
+            } else {
+              unshift (@$rman_bkup_pdb_oss, bkup_pdb_oss_generate_format());
+            }            
+
+            $rman_oss_commands = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => "oss", tns_services => \@tns_services_list});
+            my $bkup_errors  = execute_backup($rman_bkup_pdb_oss, {rman_cfg => $rman_oss_commands, encrypt => "ON"});
+            rollback_pdb_status();
+            $backup_handler->delete_obsolete({tns_services => \@tns_services_list});
+            if (@$bkup_errors) {
+              my $error_report = "$alerts{e} Cannot complete the backup to cloud storage.\n$alerts{e}-Detail\n";
+              foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+              }
+              $LOG->logprt($error_report);
+              report_to_adminlogs($error_report);
+              $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["backup","cloud storage", $logfile]}});
+            }
+            $LOG->logprt("$alerts{i} ....... OK\n");
+            if ( $levelZeroFlag == 1 ) {
+                $LOG->logprt("$alerts{i} Full Backup to Cloud Storage is Completed\n");
+            }else {
+                $LOG->logprt("$alerts{i} Incremental Backup to Cloud Storage is Completed\n");
+            }
+          } elsif ( $forceL0 == 1 || $levelZeroFlag == 1 ) {
+            # Take full backup (Level 0) if
+            # 1. Out of schedule L0 (by flag level0)
+            # 2. Not an explicit level1 backup (by flag level1)
+            # 3. Today is L0 day and this is the first L0 for the day
+            # 4. This is the first backup and no previous level0 backup is taken by obkup
+            $LOG->logprt("$alerts{i} Performing Full Backup to Cloud Storage\n");
+            #---- starts rman session
+            # ER 28489008: get the list of required rman configure commands.
+            # Get the rman commands to backup archive log to oss
+            my $rman_oss_commands = [];
+            $rman_oss_commands = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => "oss", operation => "CDB_BACKUP", tns_services => \@tns_services_list});
+
+            ### Need to set controlfile auto backup format when custom format is specified ###
+            unshift (@$rman_bkup_data_primary_oss_full, @$rman_ctlfile_autobackup_fmt) if ($custom_format ne  "");
+
+            my $bkup_errors  = execute_backup($rman_bkup_data_primary_oss_full, {rman_cfg => $rman_oss_commands, encrypt => "ON"});            
+            $backup_handler->delete_obsolete({tns_services => \@tns_services_list});
+            if (@$bkup_errors) {
+              my $error_report = "$alerts{e} Cannot complete the Full backup to cloud storage.\n$alerts{e}-Detail\n";
+              foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+              }
+              $LOG->logprt($error_report);
+              report_to_adminlogs($error_report);
+              $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["Full backup","cloud storage", $logfile]}});
+            }
+            my ($last_l0_date,$exit_status) = $LOG->logexe("$DATE_PATH +%m%d%y");
+            $REG->set('last_level0_date',$last_l0_date);
+            $LOG->log("last_level0_date set to $last_l0_date\n");
+            $LOG->logprt("$alerts{i} ....... OK\n");
+            $LOG->logprt("$alerts{i} Full Backup to Cloud Storage is Completed\n");
+          } else {
+            # Take Incremental backup (Level 1).
+            $LOG->logprt("$alerts{i} Performing Incremental Backup to Cloud Storage\n");
+            # ER 28489008: get the list of required rman configure commands.
+            # Get the rman commands to backup archive log to oss
+            my $rman_oss_commands = [];
+            $rman_oss_commands = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => "oss", operation => "CDB_BACKUP",  tns_services => \@tns_services_list});
+
+            ### Need to set controlfile auto backup format when custom format is specified ###
+            unshift (@$rman_bkup_data_primary_oss_incr, @$rman_ctlfile_autobackup_fmt) if ($custom_format ne  "");
+
+            #---- starts rman session
+            my $bkup_errors  = execute_backup($rman_bkup_data_primary_oss_incr, {rman_cfg => $rman_oss_commands, encrypt => "ON"});
+            $backup_handler->delete_obsolete({tns_services => \@tns_services_list});
+            if (@$bkup_errors){
+              my $error_report = "$alerts{e} Cannot complete the Incremental backup to cloud storage.\n$alerts{e}-Detail\n";
+              foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+              }
+              $LOG->logprt($error_report);
+              report_to_adminlogs($error_report);
+              $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["Incremental backup", "cloud storage",$logfile]}});
+            }
+            $LOG->logprt("$alerts{i} ....... OK\n");
+            $LOG->logprt("$alerts{i} Incremental Backup to Cloud Storage is Completed\n");
+          }
+          ## END of OSS Only ##
+        } elsif ($vars{'BKUP_TYPE'} eq "zdlra") {
+          ## BACKUP TO ZDLRA AS PRIMARY ###
+          # Note: This ZDLRA backup uses minimal space at local
+          # storage, recovery times may increase but it
+          # would be more cost efficient in EXADATA/RAC environments.
+          my $rman_zdlra_commands = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => "zdlra", tns_services => \@tns_services_list});
+
+          if ( defined $pdbs ) {
+            $LOG->logprt("$alerts{i} Performing Backup to Recovery Appliance\n");
+            #---- starts rman session
+            my $bkup_errors = execute_backup($rman_bkup_pdb_zdlra , {rman_cfg => $rman_zdlra_commands});
+            rollback_pdb_status();
+            if (@$bkup_errors){
+              my $error_report = "$alerts{e} Cannot complete the Incremental backup to Recovery Appliance.\n$alerts{e}-Detail\n";
+              foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+              }
+              $LOG->logprt($error_report);
+              report_to_adminlogs($error_report);
+              $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["Incremental backup", "Recovery Appliance",$logfile]}});
+            }
+            $LOG->logprt("$alerts{i} ....... OK\n");
+            $LOG->logprt("$alerts{i} Full Backup to Recovery Appliance is Completed\n");
+          } else {
+              # Take Regular backup (Level 0 / Level 1).
+              $LOG->logprt("$alerts{i} Performing Regular Backup to Recovery Appliance\n");
+              #---- starts rman session
+              my $bkup_errors;
+              if ($level0 == 1){ 
+                $bkup_errors = execute_backup($rman_bkup_data_primary_zdlra_full,{rman_cfg => $rman_zdlra_commands});
+              } else {
+                $bkup_errors = execute_backup($rman_bkup_data_primary_zdlra_incr,{rman_cfg => $rman_zdlra_commands});
+              }
+              if (@$bkup_errors){
+                my $error_report = "$alerts{e} Cannot complete the Regular backup to Recovery Appliance.\n$alerts{e}-Detail\n";
+                foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+                }
+                $LOG->logprt($error_report);
+                report_to_adminlogs($error_report);
+                $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["Regular backup", "Recovery Appliance"]}});
+              }
+              $LOG->logprt("$alerts{i} ....... OK\n");
+              $LOG->logprt("$alerts{i} Regular Backup to Recovery Appliance is Completed\n");
+          }
+          ## END of ZDLRA Only ##
+        }elsif ($vars{'BKUP_TYPE'} eq "dbrs") {
+          ## BACKUP TO ZDLRA AS PRIMARY ###
+          # Note: This ZDLRA backup uses minimal space at local
+          # storage, recovery times may increase but it
+          # would be more cost efficient in EXADATA/RAC environments.
+          my $rman_dbrs_commands = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => "dbrs", tns_services => \@tns_services_list});
+
+          if ( defined $pdbs ) {
+            $LOG->logprt("$alerts{i} Performing Backup to DBRS\n");
+            #---- starts rman session
+            #Executing zdlra commands to avoid unexpected bifurcation in future. Most of ZDLRA imorvements in commands should apply for DBRS
+            my $bkup_errors = execute_backup($rman_bkup_pdb_zdlra , {rman_cfg => $rman_dbrs_commands});
+            rollback_pdb_status();
+            if (@$bkup_errors){
+              my $error_report = "$alerts{e} Cannot complete the Incremental backup to DBRS.\n$alerts{e}-Detail\n";
+              foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+              }
+              $LOG->logprt($error_report);
+              report_to_adminlogs($error_report);
+              $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["Incremental backup", "DBRS",$logfile]}});
+            }
+            $LOG->logprt("$alerts{i} ....... OK\n");
+            $LOG->logprt("$alerts{i} Full Backup to DBRS is Completed\n");
+          } else {
+              # Take Regular backup (Level 0 / Level 1).
+              $LOG->logprt("$alerts{i} Performing Regular Backup to DBRS\n");
+              #---- starts rman session
+              my $bkup_errors;
+              #Executing zdlra commands to avoid unexpected bifurcation in future. Most of ZDLRA imorvements in commands should apply for DBRS
+              if ($level0 == 1){
+                $bkup_errors = execute_backup($rman_bkup_data_primary_zdlra_full,{rman_cfg => $rman_dbrs_commands});
+              } else {
+                $bkup_errors = execute_backup($rman_bkup_data_primary_zdlra_incr,{rman_cfg => $rman_dbrs_commands});
+              }
+              if (@$bkup_errors){
+                my $error_report = "$alerts{e} Cannot complete the Regular backup to DBRS.\n$alerts{e}-Detail\n";
+                foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+                }
+                $LOG->logprt($error_report);
+                report_to_adminlogs($error_report);
+                $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["Regular backup", "DBRS"]}});
+              }
+              $LOG->logprt("$alerts{i} ....... OK\n");
+              $LOG->logprt("$alerts{i} Regular Backup to Recovery Appliance is Completed\n");
+          }
+        } elsif ($vars{'BKUP_TYPE'} =~ "nfs") {
+          # backup to nfs
+          my $rman_nfs_commands = [];
+          $rman_nfs_commands = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => "nfs", tns_services => \@tns_services_list});
+          if ( defined $pdbs ) {
+            my $rman_bkup_pdb_nfs;
+            if ( $levelZeroFlag == 1 ) {
+                $rman_bkup_pdb_nfs = $rman_bkup_pdb_nfs_full;
+                $LOG->logprt("$alerts{i} Performing Full Backup to shared Storage\n");
+            }
+            else {
+                $rman_bkup_pdb_nfs = $rman_bkup_pdb_nfs_incr;
+                $LOG->logprt("$alerts{i} Performing Incremental Backup to shared Storage\n");
+            }
+            #PDB must have a custom tag to avoid file name collitions. Bug 28713109
+            #---- starts rman session
+            my $bkup_errors  = execute_backup($rman_bkup_pdb_nfs, {encrypt => "ON", rman_cfg => $rman_nfs_commands});
+            rollback_pdb_status();
+            $backup_handler->delete_obsolete({tns_services => \@tns_services_list});
+            if (@$bkup_errors) {
+              my $error_report = "$alerts{e} Cannot complete the backup to shared storage.\n$alerts{e}-Detail\n";
+              foreach (@$bkup_errors) {
+                  $error_report = "${error_report}$_";
+              }
+              $LOG->logprt($error_report);
+              report_to_adminlogs($error_report);
+              $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["backup", "shared storage",$logfile]}});
+            }
+            $LOG->logprt("$alerts{i} ....... OK\n");
+            if ( $levelZeroFlag == 1 ) {
+                $LOG->logprt("$alerts{i} Full PDB Backup to Shared Storage is Completed\n");
+            }else {
+                $LOG->logprt("$alerts{i} Incremental PDB Backup to Shared Storage is Completed\n");
+            }
+          } else {
+             my @date = split(" ", localtime(time));
+             my $today = $date[0];
+             # Get date/flags for deciding on level0/level1
+             my ($cur_date,$exit_status) = $LOG->logexe("$DATE_PATH +%m%d%y");
+             $LOG->logprt("last L0 date is $vars{'LAST_L0_DATE'}\n");
+             $LOG->logprt("flag level0 = $level0\n");
+
+             if ( $forceL0 == 1 || $levelZeroFlag == 1 ) {
+               $LOG->logprt("$alerts{i} Performing Full backup to shared storage\n");
+
+               #---- starts rman session
+               my $bkup_errors = execute_backup($rman_bkup_data_primary_nfs_lvl0, {rman_cfg => $rman_nfs_commands});
+               $backup_handler->delete_obsolete({tns_services => \@tns_services_list});
+               if (@$bkup_errors){
+                 my $error_report = "$alerts{e} Cannot complete the backup to shared storage.\n$alerts{e}-Detail\n";
+                 foreach (@$bkup_errors) {
+                   $error_report = "${error_report}$_";
+                 }
+                 $LOG->logprt($error_report);
+                 report_to_adminlogs($error_report);
+                 $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["backup", "shared storage", $logfile] }});
+               }
+               my ($last_l0_date,$exit_status) = $LOG->logexe("$DATE_PATH +%m%d%y");
+               $REG->set('last_level0_date',$last_l0_date);
+               $LOG->log("last_level0_date set to $last_l0_date");
+               $LOG->logprt("$alerts{i} ....... OK\n");
+               $LOG->logprt("$alerts{i} Full backup to shared storage is Completed\n");
+             } else {
+               # Take Incremental backup (Level 1).
+               $LOG->logprt("$alerts{i} Performing incremental backup to shared storage\n");
+
+               #---- starts rman session
+               my $bkup_errors = execute_backup($rman_bkup_data_primary_nfs_lvl1, {rman_cfg => $rman_nfs_commands});
+               $backup_handler->delete_obsolete({tns_services => \@tns_services_list});
+               if (@$bkup_errors){
+                 my $error_report = "$alerts{e} Cannot complete the backup to shared storage.\n$alerts{e}-Detail\n";
+                 foreach (@$bkup_errors) {
+                   $error_report = "${error_report}$_";
+                 }
+                 $LOG->logprt($error_report);
+                 report_to_adminlogs($error_report);
+                 $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["backup", "shared storage",$logfile]}});
+              }
+              $LOG->logprt("$alerts{i} ....... OK\n");
+              $LOG->logprt("$alerts{i} Incremental backup to shared storage is Completed\n");
+            }
+          }
+        } else {
+          ## Check if disk backup encryption is needed ##
+          my $encrypt_disk_bkup = _encrypt_disk_bkup();
+          my $encrypt_cmd = ($encrypt_disk_bkup) ? "ON" : "OFF";
+          my $rman_disk_commands = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => "disk", tns_services => \@tns_services_list});
+          ## FOR ENTERPRISE EDITION FOR DISK/OSS GENERAL SCENARIO
+          ## -------------------------- DISK ------------------------------------------------------
+            $LOG->logprt("$alerts{i} Performing backup to local storage (primary backup)\n");
+            #----- starts rman session
+            my $rman_cmd ;
+            if (defined $pdbs ) {
+              $rman_cmd = $rman_bkup_pdb_disk;#qui cambiar
+            } else {
+              $rman_cmd = $rman_bkup_data_primary_disk;
+            }
+            my $bkup_errors  = execute_backup($rman_cmd, {rman_cfg => $rman_disk_commands, encrypt => $encrypt_cmd});
+
+            rollback_pdb_status();
+            if (@$bkup_errors) {
+                my $error_report = "$alerts{e} Cannot complete the backup to disk storage\n$alerts{e}-Detail\n";
+                foreach (@$bkup_errors) {
+                    $error_report = "${error_report}$_";
+                }
+                $LOG->logprt($error_report);
+                report_to_adminlogs($error_report);
+                $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["backup", "disk storage",$logfile]}});
+            }
+                $LOG->logprt("$alerts{i} ...... OK\n");
+                $LOG->logprt("$alerts{i} Backup to local storage is completed\n");
+
+          ## ---------------------------- OSS -------------------------------------------------------
+          if ($vars{'BKUP_TYPE'} eq "diskoss") {
+          my @date = split(" ", localtime(time));
+          my $today = $date[0];
+          my $rman_oss;
+          my $dfile_backup = 0;
+          # ER 28489008: get the list of required rman configure commands.
+          my $rman_oss_commands;
+          my $rman_oss_commands_ctlfile;
+          my $encrypt_disk_bkup = _encrypt_disk_bkup();
+          # Get the commands for encrypt_disk_bkup only
+          if ($encrypt_disk_bkup) {
+            $rman_oss_commands = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => "oss", tns_services => \@tns_services_list});
+            #allocate rman commands for backing up current controlfile 
+            #$rman_oss_commands_ctlfile = $backup_handler->rman_config_oss({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, local_conn => "yes", max_channels => 1});
+          }
+
+          if ( ($datafile_backup == 1) || $today eq $vars{'LVL0_DAY'} || !defined($vars{'LAST_DFILE_BACKUP_DATE'}) || $vars{'LAST_DFILE_BACKUP_DATE'} eq '' ) {
+             # Include datafilecopy if it is Sunday.
+             $LOG->logprt("$alerts{i} datafilecopy enabled for Cloud Storage\n");
+             $dfile_backup = 1;
+             $rman_oss = ($encrypt_disk_bkup) ? $rman_bkup_data_secondary_oss_edisk : $rman_bkup_data_secondary_oss_pdisk;
+          } else {
+             $rman_oss = ($encrypt_disk_bkup) ? $rman_bkup_data_secondary_oss_edisk_incr: $rman_bkup_data_secondary_oss_pdisk;
+          }
+
+          my $rman_oss_cmd;
+          my $rman_disk_purge_cmd;
+
+          if ( defined $pdbs ) {
+             $rman_oss_cmd = $rman_bkup_pdb_diskoss;
+             $rman_disk_purge_cmd = $rman_bkup_diskpurge_ctlfile_bkupset;
+          } else {
+             $rman_oss_cmd = $rman_oss;
+
+              # Bug 25833655: Workaround for sync'ing disk CF backup with backup to cloud metadata. We manually backup CF, this will generate an autobackup which syncs the backup CF in disk previously taken.
+             $rman_disk_purge_cmd = $rman_bkup_diskpurge_ctlfile_bkup;
+          }
+
+          ### Need to set controlfile auto backup format when custom format is specified ###
+          # Bug 29709489
+          # If not custom format is set, generate a unique identifier to avoid duplicate issues.
+          if( defined $pdbs && $custom_format eq "") {
+            unshift (@$rman_oss_cmd, bkup_pdb_oss_generate_format());
+          } else {
+            unshift (@$rman_oss_cmd, @$rman_ctlfile_autobackup_fmt) if ($custom_format ne  "");
+          }
+            $LOG->logprt("$alerts{i} Performing backup to cloud storage (secondary backup)\n");
+            #------ starts rman session 
+            my $bkup_errors;
+            my $bkup_errors1;
+
+            if ($encrypt_disk_bkup) {
+              $bkup_errors = execute_backup($rman_oss_cmd, {rman_cfg => $rman_oss_commands, encrypt => "ON"});
+              $bkup_errors1 = execute_backup($rman_disk_purge_cmd, {rman_cfg => $rman_disk_commands, encrypt => "ON"});
+            } else {
+              $bkup_errors = execute_backup($rman_oss_cmd);
+            }
+
+            rollback_pdb_status();
+
+            #if errors in any rman errors
+            if (@$bkup_errors || @$bkup_errors1) {
+                my $error_report = "$alerts{e} Cannot complete the backup to cloud storage\n$alerts{e}-Detail\n";
+                foreach (@$bkup_errors) {
+                    $error_report = "${error_report}$_";
+                }
+                $LOG->logprt($error_report);
+                report_to_adminlogs($error_report);
+                $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["backup", "cloud storage",$logfile]}});
+            }
+
+             # Store the last backup Datafilecopy date in Creg
+             if ( $dfile_backup == 1 ) {
+                 my ($last_bkp_dt,$exit_status) = $LOG->logexe("$DATE_PATH +%m%d%y");
+                 $LOG->logprt("Backup Datafilecopy date set to $last_bkp_dt \n");
+                 $REG->set('last_dfile_backup_date',$last_bkp_dt);
+             }
+
+             $LOG->logprt("$alerts{i} ......OK\n");
+             $LOG->logprt("$alerts{i} Backup to cloud storage is completed\n");
+            }
+        }
+
+    # @@@@@@@@@@@@@@@@@ END OF BACKUP OF DATA @@@@@@@@@@@@@@@@@@@@
+    # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+    # @@@@@@@@@@@@@@@@@ SCHEDULED RESTORE VALIDATION @@@@@@@@@@@@@
+    # Bug 30028742 : These validations can significantly extend the backup time of the level 0
+    # The replacement of crosscheck with restore validate preview header will 
+    # help provide a more efficient validation process and remove the need to 
+    # execute the weekly restore validate statement.
+    # restore validate can be called on demand using bkup_api reval_start
+    #my @date = split(" ", localtime(time));
+    #my $today = $date[0];
+    ### Bug 29846101: restore validate on level0 day only for cdb backup.
+    #if (($today eq $vars{'LVL0_DAY'}) && (not defined $pdbs)) {
+    #    # do restore validation on level 0 day after a backup
+    #    $rv_mode = $vars{'BKUP_TYPE'};
+    #    my $rv_result = restore_validation($rv_mode);
+    #    # Bug 28260800 backup has passed and hence the TAG related to it should be reported back to customer.
+    #    # Failure of restore validate needs to be reported back. PSM show that as a separate Warning icon in the Backup Tab.
+    #    if ($rv_result > 0) {
+    #      $LOG->logprt("$alerts{w} Restore Validation Failed.\n");
+    #    }
+    #}
+    # @@@@@@@@@@@@@@@@@ END OF RESTORE VALIDATION @@@@@@@@@@@@@@@@
+    
+    # @@@@@@@@@@@@@@@@@ ENABLE RESTORE VALIDATION AFTER DB BACKUPS @@@@@@@@@@@@@@@@
+    if( $vars{'BKUP_TYPE'} ne "zdlra" and $vars{'BKUP_TYPE'} ne "dbrs") {    
+       restore_preview_validate_header();
+     }
+
+    # @@@@@@@@@@@@@@@@@ CONFIG FILE BACKUP COMMANDS @@@@@@@@@@@@@@
+    # Bug 28733168: Need to backup config files or exacs as well
+    if (! defined $pdbs) {
+        if ( $vars{"BKUP_CFG_FILES"} eq "yes" ) {
+            $LOG->logprt("$alerts{i} Starting backup of config files\n");
+            if (cfg_main()){
+                $LOG->logerr({ errorinfo => { ID => "BKUP_EX_CFG_FILES_BACKUP_ERR", ARGS => [$logfile]}});
+            }
+            $LOG->logprt("$alerts{i} Config files backup ended successfully\n");
+        }elsif( $vars{"DG_OBSERVER_HOST"} eq "yes" ) {
+            $LOG->logprt("$alerts{i} Starting backup of DB Observer Configuration.\n");
+            # Backup only DB observer cfgfiles.
+            $cfg_bkup{'MODE'} = "dgobs";
+            if (cfg_main()){
+                $LOG->logprt("$alerts{e} Cannot complete DG Observer config files backup\n");
+                return 1;
+            }
+        }else{
+            $LOG->logprt("$alerts{i} Starting backup of tde wallet\n");
+            # Backup only TDE wallet.
+            $cfg_bkup{'MODE'} = "tde";
+            if (cfg_main()){
+                $LOG->logerr({ errorinfo => { ID => "BKUP_EX_CFG_FILES_BACKUP_ERR", ARGS => [$logfile]}});
+            }
+        }
+    }
+
+    # @@@@@@@@@@@@@@@@@ END OF CONFIG FILES @@@@@@@@@@@@@@@@@@@@@@
+    # Removing ohome backup purge, we don't take ohome backups as a backup operation
+    # Old functionality giving error message after successful backups.
+
+    # If the backup succeed we can delete the flag bkup_post_tde_migration
+    if ($bkup_post_tde_migration){
+      $REG->del("bkup_post_tde_migration");
+    }
+
+    $LOG->logprt("$alerts{i} All requested tasks are completed\n");
+    $LOG->logprt("############################### BACKUP COMPLETED SUCCESSFULLY ##############################\n");
+    return 0;
+  }
+#}
+
+#########################
+# ok = execute_backup($rman_instructions)
+# returns 0 if success otherwise 1
+
+sub execute_backup {
+    my $instructions = shift;
+    $LOG->logerr({ errorinfo => { ID => "COMMON_MANDATORY_PARAMETERS_NOT_PROVIDED_ERR", ARGS => ["instructions", $logfile]}}) if (!defined $instructions);
+    
+    my $opts = shift;
+    my $result = 0;
+    my $pdbf;
+    my $last_line;
+
+    ($pdbf = $pdbs) =~ s/,/','/gi if (defined $pdbs);;
+    $retention_window = ($vars{'RETENTION_WINDOW'}, $retention_window) [$vars{'RETENTION_WINDOW'} > $retention_window];
+
+    unshift (@$instructions, "set command id to '$uuid_cid';"); #Any backup must have an UUID and it msut be the first command
+
+    if (defined $opts->{rman_cfg}) { #Allocate channel etc rman before command
+        ## Check if this has run allocate channel , if so remove the last curly brace and add it after all the instructions are appended.
+        my @matches = grep { /allocate channel/i } @{$opts->{rman_cfg}};
+        if (@matches) {
+          #the last line should be }
+          $last_line = pop(@{$opts->{rman_cfg}});
+          for my $rman_instruction (@$instructions) {
+            #BACKUP ... DEVICE TYPE is supported only when automatic channels are used, we need to remove this when we allocate channels
+            # FORMAT FOR DEVICE TYPE SBT is ok and should not be replaced
+            if (($rman_instruction =~ m/BACKUP(.*)DEVICE TYPE (SBT|DISK)/i) && ($rman_instruction !~ m/FORMAT FOR DEVICE TYPE (SBT|DISK)/i)) {
+              $rman_instruction  =~ s/ DEVICE TYPE (SBT|DISK)//i;
+            }
+          }
+        }
+        unshift (@$instructions, @{$opts->{rman_cfg}});
+        push(@$instructions, $last_line) if (defined $last_line);
+    }
+
+    # if encryption on or off is sent, then set it accordingly; This needs to be outside of RUN block
+    if (defined $opts->{encrypt}) {
+      unshift (@$instructions, "SET ENCRYPTION $opts->{encrypt};");
+    }
+
+    # Bug 33998709 - AVOID ORA-28365: WALLET IS NOT OPEN DURING BACKUP EXECUTION. Query enforce wallet accessability
+    # bug 34193737 - syntax issue for 11204
+    unshift (@$instructions, "select * from gv\$encryption_wallet;") if ($db_mversion > 11 );
+
+    $LOG->logprt("$alerts{i} Executing rman instructions\n");
+    
+    $LOG->logprt("Connection string: "."$RMAN_PATH msgno target $TARGET "."$vars{'BKUP_CAT_CONN'}"."\n");
+    for my $instruction (@$instructions){
+        if (defined $pdbs) {
+          $instruction =~ s/pdb_name/'$pdbf'/gi;
+          $instruction =~ s/retention_window/$retention_window/gi;
+        }
+        my $print_ins = $instruction;
+        $print_ins =~ s/CONNECT '\S+'/CONNECT '*'/;
+        $LOG->logprt(" -> $print_ins\n");
+    }
+
+    push(@{$opts->{rman_cfg}}, $last_line) if (defined $last_line);
+    #ER 29766759: Add show all so that we can see the current config.
+    unshift (@$instructions, "show all;");
+
+    my ($out, $err) = $backup_handler->rman($instructions);
+    # $LOG->logprt(s rman output to the log
+    $LOG->logprt(" ->  RMAN OUTPUT:\n");
+    foreach (@$out){
+            $LOG->logprt("      $_\n");
+    }
+
+
+
+    #Bug 30310439 - Mark Backup Jobs Success for cases where status in v$rman_backup_job_details
+    #is COMPLETED,COMPLETED WITH ERRORS,COMPLETED WITH WARNINGS
+    #Need to scan v$rman_backup_job_details only for backup jobs
+    #If the instructions do not have backup, we can directly scan logs
+    #This function is called by archivelog cleanup routine as well which contains just DELETE commands
+  
+    if ( grep  { $_ =~ /^Backup/i} @$instructions){  
+      my @no_errors=();
+      $result=\@no_errors;
+      
+      #Note for database backups, there is an archivelog backup triggered with same UUID.
+      #Count of failures can be 2 in such cases. 
+      my ($succCount, $failures) = $backup_handler->get_succ_fail_commandid($uuid_cid);
+      #There is a possibilty that db crashed during backup or sql failed with some ORA error
+      #Then we need to check if failures is defined.
+      if (defined ($failures) && defined ($succCount)){
+        if ($failures || ($succCount == 0)){
+          # - Verifying if the step was successful
+          $LOG->logprt(" -> Scanning Obkup Log for Errors: \n");
+          $result = $backup_handler->obkup_errors($out);
+          return $result;
+        } else {
+          #RMAN Backup Job was successful
+          #Bug 32398058 : get the LAST TAG for rman block with the provided commandid
+          #Last TAG is not needed when obkup is called to backup CURRENT ControlFile
+          if (! $currentcf) {
+             ($autobackup_tag) = $backup_handler->get_last_tag_commandid($uuid_cid);
+             if ((defined $autobackup_tag)  && ($autobackup_tag ne "")) {
+               #by bkup_api - apiv2/apiv1 .Any Changes to this line pattern should be synced with other files.
+               $LOG->logprt(" -> Last INCR backup TAG Found in Backup Session:$autobackup_tag\n");
+             }
+          }
+          $LOG->logprt(" -> Skipping RMAN output scan as backup job is marked COMPLETED \n");
+          return $result;
+        }
+      }
+      else{
+        $LOG->logprt(" -> Unable to check Job Status for backup job with command_id:$uuid_cid ");
+        $LOG->logprt(" -> Scanning Obkup Log for Errors: \n");
+        $result = $backup_handler->obkup_errors($out);
+        return $result;
+      }
+    } else {
+      # - Verifying if the step was successful
+      $LOG->logprt(" -> Scanning Obkup Log for Errors: \n");
+      $result = $backup_handler->obkup_errors($out);
+      return $result;
+    }
+}
+
+# Function: validate_pdb()
+# Description: Backup the specified pluggable database
+
+sub validate_pdb {
+  $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_INVALID_PARAMETER_ERR", ARGS => ["Validate PDB"]}}) if ($vars{'CDB'} !~ m/yes/i);
+
+  my @pdbs_array = split(/,/,$pdbs);
+  foreach my $pdb (@pdbs_array) {
+    my $pdb_exists = $DB->q1("SELECT NAME,OPEN_MODE FROM V\$PDBS WHERE upper(NAME)=upper('$pdb')");
+    $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => ["Validating PDB existance",$logfile]}}) if (not $pdb_exists);
+
+    #my $is_mounted = 0;
+    #my ( $pdbname, $state ) = split(/\s+/,$pdb_exists, 2);
+    #Check which pdbs are in mounted state
+    #if ( $state =~ "MOUNTED" ) {
+    #  push @mounted_pdbs, 1;
+    #  $is_mounted = 1;
+    #} else {
+    #  push @mounted_pdbs, 0;
+    #}
+
+  }
+  #If the are any mounted pdb then we need to open it. We open any pdb that is in mounted state
+  #if ($is_mounted){
+  #  for (my $pdb_pointer = 0; $pdb_pointer < scalar @pdbs_array; $pdb_pointer++) {
+  #    if ($mounted_pdbs[$pdb_pointer] == 1) {
+  #      $LOG->logprt("$alerts{i} PDB: $pdbs_array[$pdb_pointer] is not open, trying to start it up\n");
+  #      my ($sqlout,$sqlora) = $DB->sql("ALTER PLUGGABLE DATABASE $pdbs_array[$pdb_pointer] OPEN");
+  #      #Check if database is open. If it is not opened then we need to rollback the prev opened pdbs
+  #      if ( @$sqlora ) {
+  #        $LOG->logprt("$alerts{e}Could not open PDB: $pdbs_array[$pdb_pointer], please open it manually and retry\n");
+  #        splice (@pdbs_array, $pdb_pointer -scalar @pdbs_array);#Remove the pdb that is causing troubles and unopened pdbs;
+  #        rollback_pdb_status();
+  #        die;
+  #      }else{
+  #        $LOG->logprt("$alerts{i} Pdb started up\n");
+  #      }
+  #    }
+  #  }
+  #}
+
+  my $pdb_list = join("') or upper(pdb_name)=upper('", @pdbs_array );
+  my $retention_query = "select SYSDATE - CREATED from v\$database";
+  my ($sqlout,$sqlora) = $DB->sql($retention_query);
+  $retention_window = @$sqlout[0];
+  $retention_window =~ s/\cI\s//;
+}
+
+
+#############################################################
+#                BACKUP CONFIG FILES                        #
+#############################################################
+
+sub cfg_init(){
+   # time vars that will be used to timestamp the tarballs.
+   my $year;
+   my $mon;
+   my $mday;
+   my $hour;
+   my $min;
+   my $sec;
+   my $tag = "";
+   # Regular flow unless it is a DG Observer.
+   if ( $vars{'DG_OBSERVER_HOST'} eq "no" || not defined $vars{'DG_OBSERVER_HOST'} ) {
+      #If we do have a TAG already identified, let us try to get it now.
+      if ((defined $autobackup_tag) && ($autobackup_tag ne "")) {
+        $tag = $autobackup_tag;
+      } else {
+         #get tag using list backup or list restore point
+         $tag = _get_tag_from_list();
+      }
+
+      if ( $tag && $tag =~ m/\S+\d{8}T\d{6}$/ ) {
+        # Gathers the require configuration to start the backup for config files
+        # <TAG><YYYY><MM><DD>T<HH><mm><SS>
+        #  TAG20190830T210533 -> L0 / L1 std tag
+        #  JAAS20190830T203241 -> Keep forever std tag
+        #  ALIIE20190830T180931 -> Customized tag
+
+        $year = substr($tag,-15,4);
+        $mon  = substr($tag,-11,2);
+        $mday = substr($tag,-9,2);
+        $hour = substr($tag,-6,2);
+        $min  = substr($tag,-4,2);
+        $sec  = substr($tag,-2,2);
+     } else {
+        $LOG->log("INFO: Config files backups using current timestamp.\n");
+        ($sec,$min,$hour,$mday,$mon,$year)=localtime(time);
+        # offsets
+        $year = $year+1900;
+        $mon = $mon+1;
+     }
+   } elsif( $vars{'DG_OBSERVER_HOST'} eq "yes" ){
+      # get current timestamp.
+      ($sec,$min,$hour,$mday,$mon,$year)=localtime(time);
+
+      # offsets
+      $year = $year+1900;
+      $mon = $mon+1;
+   }
+
+   printf ("$alerts{i} at time: %4d-%02d-%02d:%02d:%02d:%02d\n", $year,$mon, $mday, $hour, $min, $sec);
+   # bug 19797240. If the instance is DG either primary or standby it should get the db_unique_name to know where
+   # exactly we should write the cfgfiles tarballs.
+   # bug 20631955. The same is also applicable for RAC/exadata evironment.
+   # BUG 30248801: Changing $cfg_bkup{'BKP_LOC'} to "/var/op/oracle/log/<dbname/uuid>" regardless of env (EXA/SI)
+   my $cfg_base = $tmpdir;
+   my $cfg_folder = "/cfg_files";
+   my $cfg_path = "$cfg_base" . "$cfg_folder";
+   if (! -d "$cfg_path" ) {
+       $LOG->logexe("$MKDIR_PATH -p $cfg_path",{runas=>"oracle"});
+       $permissions_utils->chown("$cfg_path",{verbose=>1});
+   }
+   $cfg_bkup{'BKP_LOC'} = $cfg_path;
+   $cfg_bkup{'NFS_LOC'} = $vars{'BKUP_NFS_MNT_DIR'} if $vars{'BKUP_TYPE'} eq "nfs";
+      
+   # end of $cfg_bkup{'BKP_LOC'} definition.
+   $cfg_bkup{'BKP_DATE'} = sprintf("%4d_%02d_%02d", $year,$mon,$mday);
+   $cfg_bkup{'BKP_TIMESTAMP'} = sprintf("%4d%02d%02d_%02d%02d", $year,$mon,$mday,$hour,$min);
+   $cfg_bkup{'BKUP_SCRIPTS_LOC'} = dirname(abs_path($0));
+   # Assumming the Doc Specs are in the same path as this script
+   #$cfg_bkup{'DOC_SPECS_LOC'} = dirname(abs_path($0)); -- Getting this value from creg file bkup_script_loc
+}
+
+
+sub tar_creation(){
+    # commands .e files creates the list of files found , and that will be in the backup
+    my @specs;
+    my %tarballs;
+    my $rac_exclusions="";
+
+    # Defines the patterns to exclude in RAC environments. (Multiple --exclude clauses can be used.)
+    if ($vars{'CLUSTER'} =~ m/rac/i){
+        # Bug 32381257: Don't exclude autologin wallets for ADBD
+        if (! $is_atp ) {
+           $LOG->logprt("$alerts{i} Enabling RAC exclusions for config files.\n");
+           $rac_exclusions=" --exclude=*.sso* --exclude=*.lck*";
+        }
+    }
+    my $i = 0 ;
+    #check if file OS CFG exists
+    if (-e "$cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_OS_SPEC'}" ) { 
+		push @specs, "$cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_OS_SPEC'}";  	
+		$tarballs{$specs[$i]} = "$TAR_PATH --exclude=#* -pzcf $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OS_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/oscfgfiles_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz -T $specs[$i].e 2>&1";
+    	$i++ ;
+    }
+    else {
+    	$LOG->logprt("$alerts{i} File $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_OS_SPEC'} not exists.\n");	
+	}
+
+	#check if DB CFG file exists
+    if (-e "$cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}" ) {
+                if(! add_tde_ks_loc_to_cfg_spec()){
+                  $LOG->logerr({ errorinfo => { ID => "BKUP_EX_CFG_FILE_MISSING_ERR", ARGS => ["Tde wallet"], EXIT_ON_FATAL => 1 }});
+                }
+                if(! add_db_wallet_loc_to_cfg_spec()){
+                  $LOG->logerr({ errorinfo => { ID => "BKUP_EX_CFG_FILE_MISSING_ERR", ARGS => ["Db wallet"], EXIT_ON_FATAL => 1 }});
+                }
+                if ($vars{'HSM'}){
+                  # Review if spec contains kms cdb json. If not, we proceed to add it.  
+                  my ($out,$err) = $LOG->logexe("$GREP_PATH \'\^$cfg_bkup{'KMS_CDB_JSON'}\$\' $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}");
+                  if ($err || $out ne "$cfg_bkup{'KMS_CDB_JSON'}"){
+                    ($out,$err) = $LOG->logexe("$ECHO_PATH '$cfg_bkup{'KMS_CDB_JSON'}' >> $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}");
+                    if ($err){
+                      $LOG->logerr("ERROR: Couldn't add kms cdb json to $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}\n");
+                      $LOG->logerr({ errorinfo => { ID => "BKUP_EX_CFG_FILE_MISSING_ERR", ARGS => ["Kms cdb json"], EXIT_ON_FATAL => 1 }});
+                    }
+                  }
+                } else {
+                  $LOG->logexe("perl -ni -e \'print unless /$vars{'OSID'}\\/cdb.json/\' $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}");
+                }
+		push @specs, "$cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}";  	
+		$tarballs{$specs[$i]} = "$TAR_PATH --exclude=#* $rac_exclusions -pzcf $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz -T $specs[$i].e 2>&1";
+    	$i++ ;
+    }
+    else {
+    	$LOG->logprt("$alerts{i} File $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'} not exists.\n");	
+	}
+	
+    # DG observer case
+    if (defined $cfg_bkup{'MODE'} and $cfg_bkup{'MODE'} eq "dgobs") {
+    	if (-e "$cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DGOBS_SPEC'}" ) { 
+        push @specs,"$cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DGOBS_SPEC'}";
+        $tarballs{$specs[$i]} = "$TAR_PATH --exclude=#* -pzcf $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OS_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/dgobscfgfiles_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz -T $specs[$i].e";
+    }
+    else {
+    	@specs = (); 
+        %{tarballs} = () ;
+        $LOG->logprt("$alerts{i} File $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DGOBS_SPEC'} not exists.\n");	
+      }
+ 	}
+#    if (not defined $cfg_bkup{'MODE'}){
+        # Starts filtering of files that exists
+        foreach my $spec (@specs){
+            if (-e $spec){
+                # opening spec file
+                open (HAND, $spec ) or $LOG->logerr({ errorinfo => { ID => "COMMON_FILE_NOTFOUND_ERR", ARGS => [$spec]}});;
+                my @lines = <HAND>;
+                close HAND;
+
+                # Getting list of files that exist
+                my @files = grep(/^(?!#).*/,@lines);
+                chomp(@files);
+                my @found_files =  grep { -e $_ } @files;
+                chomp(@found_files);
+                my $size = $#found_files + 1;
+                if ($size >= 1){
+                    # list of files to be included in tar
+                    $LOG->logprt(" List of files to be included in tar\n");
+                    # creating file to save files
+                    open (my $efile , ">", "$spec.e") or $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => ["unable to create $spec.e", $logfile]}});
+                    print "files to be included @ $spec.e:";
+                    foreach my $item (@found_files){
+                        print " -> $item\n";
+                        print $efile "$item\n";
+                    }
+                    close $efile;
+                    $permissions_utils->chown("$spec.e") if(-e "$spec.e");
+                }
+                else {
+                    $LOG->logprt(" Please verify any file found from $spec list\n");
+                }
+            }
+        }
+#    }else{
+        # By pass the specs. As only TDE wallet is going to be backup.
+#        $LOG->logprt(" Backup of TDE wallet.\n";
+#    }
+
+    # Creating tars
+    if ( not defined $cfg_bkup{'MODE'} || $cfg_bkup{'MODE'} eq "dgobs" ) {
+        $LOG->logprt("$alerts{i} Compressing config files into tar files\n");
+        foreach my $item (@specs){
+            if (-e "$item.e"){
+                my ($out_tarball,$err_tarball)=$LOG->logexe($tarballs{$item},{runas=>"oracle"});
+                $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => [$tarballs{$item}, $logfile], EXIT_ON_FATAL => 1 }}) if ($err_tarball);
+            }
+        }
+        $tarball_names{'OS'} = "$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OS_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/oscfgfiles_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz";
+        $tarball_names{'OH'} = "$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz";
+        $tarball_names{'DGOBS'} = "$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OS_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/dgobscfgfiles_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz" if ($cfg_bkup{'MODE'} eq "dgobs");
+        
+    }
+    elsif($cfg_bkup{'MODE'} eq "tde"){
+        backup_tde_wallet();
+    }
+ # Validate that TDE tar includes wallet
+ if(! _validate_tar_includes_tde_wallet("$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz")){
+    $LOG->logerr({ errorinfo => { ID => "BKUP_EX_CFG_FILE_MISSING_ERR", ARGS => ["Tde wallet"], EXIT_ON_FATAL => 1 }});
+ }
+ # Expose tarball locations to OBKUP log
+ if ($vars{'BKUP_CFG_DEST'} =~ "yes"){
+     enforce_tde_ks_loc_population();
+     if (-e "$cfg_bkup{'TDE_KS_LOC'}" ){
+         my $tdeWalletTar = "$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/TDEWallet_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz";
+         my $tarcmd = "$TAR_PATH ";
+         $tarcmd .= " --exclude=*.sso* --exclude=*.lck*" if(! $is_atp);
+         $tarcmd .= " -pzcf $tdeWalletTar $cfg_bkup{'TDE_KS_LOC'}";
+         my ($out_tarcmd,$err_tarcmd)=$LOG->logexe($tarcmd,{runas=>"oracle"});
+         $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => [$tarcmd,$logfile], EXIT_ON_FATAL => 1 }}) if ($err_tarcmd);
+         $tarball_names{'TDEWallet'} = $tdeWalletTar;
+     }
+     while (($key, $value) = each (%tarball_names)){
+        if (-e "$value"){
+           $LOG->logprt("\n\n$key"."_cfg_tar::$value\n\n");
+        }
+     }
+ }
+
+}
+
+sub cfg_clean_on_error(){
+  $LOG->logprt("Cleaning ...\n");
+  my @directories = ($cfg_bkup{"OS_CFG_DIR"}, $cfg_bkup{"OH_CFG_DIR"});
+  @directories = map {  '$cfg_bkup{"BKP_LOC"}/$_/$cfg_bkup{"BKP_DATE"}' } @directories;
+  foreach (@directories){
+    # preparing to remove directories
+    my $deleted = rmtree($_,1);
+    $LOG->logprt(" -> $deleted deleted files");
+  }
+}
+
+sub cfg_clean_old_bkups(){
+  if ( $vars{'RETENTION_WINDOW'} eq 'NB' ) {
+    $vars{'RETENTION_WINDOW'} = 14;
+  }
+  $LOG->logprt("Cleaning backups older than $vars{'RETENTION_WINDOW'} days\n");
+
+  my $bkup_dest = $vars{'BKUP_TDE_DEST'} ne "none"? $vars{'BKUP_TDE_DEST'} : $vars{'BKUP_TYPE'};
+  #Bug 35806708: NFS backups are in NFS-LOC/hostname=dbid/oscfgfiles_date.tar.gz ..
+  if ( $bkup_dest =~ "nfs") {
+      my $instruction = "$FIND_PATH $cfg_bkup{'NFS_LOC'}/*-$cfg_bkup{'DBID'}/ -maxdepth 2 -mindepth 1 -type f -regex  '.*oscfg.*tar.gz\\\|.*ohcfg.*tar.gz' -mtime +$vars{'RETENTION_WINDOW'}";
+      my @remove = qx($instruction);
+      chomp(@remove);
+      foreach my $i (@remove){
+         my $dir_name = dirname($i);
+         unlink "$i";
+         unless (glob "$dir_name") {
+           rmtree($dir_name,1);
+         }
+      }
+   } else {
+     # Determining the old backups tag
+     my @directories = ($cfg_bkup{'OS_CFG_DIR'}, $cfg_bkup{'OH_CFG_DIR'});
+     foreach (@directories){
+     # Verifying if the folder is there
+     if (-d "$cfg_bkup{'BKP_LOC'}/$_"){
+         my $instruction = "$FIND_PATH $cfg_bkup{'BKP_LOC'}/$_/ -maxdepth 2 -mindepth 1 -mtime +$vars{'RETENTION_WINDOW'}";
+         my @remove = qx($instruction);
+         chomp(@remove);
+         foreach my $i (@remove){
+           rmtree($i,1);
+         }
+      }
+    }
+  }
+}
+
+sub cfg_clean_oss_bkups(){
+  $LOG->logprt("Cleaning cfg file backups of cloud storage older than $vars{'OSS_RETENTION_WINDOW'} days \n");
+  my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
+  printf ("$alerts{i} at time: %4d-%02d-%02d:%02d:%02d:%02d\n", $year+1900,$mon+1, $mday, $hour, $min, $sec);
+  # Convert current time to seconds
+  my $TIME = timelocal(0, 0, 0, $mday, $mon, $year+1900);
+  #get the list of backup
+  #
+  my $hostname;
+  my $err;
+  my $prefix;
+  my $prefix_cmd = "";
+  my $proxy_flag = ($proxy_host) ? "-proxy \"$proxy_host:$proxy_port\"" : "";
+
+  if ($ENV{HOSTNAME}) {
+      $prefix = $ENV{HOSTNAME};
+  } else {
+      ($hostname,$err) = $LOG->logexe("$HOSTNAME_PATH");
+      if ( $err != 0 ) {
+         $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => ["/bin/hostname",$logfile], EXIT_ON_FATAL => 0 }});
+      } else {
+         $prefix = $hostname;
+      }
+  }
+
+  # Bug 30431859: Not able to list by prefix HOSTNAME-dbid as I have observed that some uploads are with 
+  # short host name and  some are with full host name. So getting list by hostname to eliminate listing of 
+  # rman backups.
+  #my $prefix = $ENV{HOSTNAME} . "-" . $cfg_bkup{'DBID'};
+  if (defined $prefix) {
+     $prefix_cmd = " -prefix $prefix";
+  }
+
+  my $cmd = "$OSS_PATH -dbname $dbname -list \/ $prefix_cmd\| $GREP_PATH \$HOSTNAME.*-$cfg_bkup{'DBID'}-.*tar.gz | grep -iv longterm";
+
+  my @result = qx ($cmd);
+
+  # open a file and write oss backup information
+  my $filename = "list$$.txt";
+  open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
+  print $fh @result;
+  close $fh;
+  $LOG->logprt("Writing list of config files in: $filename\n");
+  #search for file creation date
+  my $cmd1 = "$AWK_PATH -F'[/]' '{print \$2}' $filename | $AWK_PATH -F'[_]' '{print \$2}'";
+  my @resu = qx ($cmd1);
+  open(my $fh1, '<', $filename) or $LOG->logerr({ errorinfo => { ID => "COMMON_FILE_NOTFOUND_ERR", ARGS => [$filename]}});
+
+  my $action;
+
+  # Convert oss_retention_window to seonds
+  my $date = $vars{'OSS_RETENTION_WINDOW'}*24*60*60;
+  foreach $action (@resu){
+    my $row = <$fh1>;
+    my $TIME1 = timelocal(0, 0, 0,substr($action,6,2), substr($action,4,2)-1, substr($action,0,4));
+    if($TIME-$TIME1 > $date){
+      $LOG->logprt("Delete oss cfg file backup... $row\n");
+      #Bug 32074092: Adding single quotes to $row to avoid inputs that could cause fork bombs as jsons contain {:} which are risky
+      my $cmd = "$OSS_PATH -dbname $dbname $proxy_flag -rmfile '$row'";
+      my $result = qx ($cmd);
+    }
+  }
+  unlink $filename or warn "Could not unlink $filename: $!";
+  $LOG->logprt("Deleting $filename\n");
+  return 1;
+}
+
+sub get_dbid(){
+    my $prefix="eval";$prefix="$SU_PATH oracle -c" if( $< == 0);
+    my $env = "export ORACLE_HOME=$vars{'OHOME'}; export ORACLE_SID=$vars{'OSID'}; export PATH=\$PATH:$vars{'OHOME'}/bin";
+    my $command = "$env; $prefix \"$ECHO_PATH 'SELECT DBID FROM V\\\$DATABASE;' | $SQLPLUS_PATH -S -L / as sysdba\n\"";
+    my $output = qx($command);
+    # Review this dbid extraction
+    $LOG->logprt("$alerts{i} Determining the oracle database id\n");
+
+    if ($output =~ m/(\d+)/){
+        $output = $1;
+    }
+    else{
+      $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => [$command, $logfile]}});
+    }
+
+    # creating file
+    $LOG->logexe("$ECHO_PATH \"$output\n\" > $cfg_bkup{'DOC_SPECS_LOC'}/dbid",{runas => "oracle"});
+
+    if ($<==0){
+      if (-e "$cfg_bkup{'DOC_SPECS_LOC'}/dbid"){
+           $permissions_utils->chown("$cfg_bkup{'DOC_SPECS_LOC'}/dbid",{verbose=>1});
+      }else{
+           $LOG->logerr({ errorinfo => { ID => "COMMON_FILE_NOTFOUND_ERR", ARGS => ["$cfg_bkup{'DOC_SPECS_LOC'}/dbid"]}});
+      }
+    }
+    $LOG->logprt("$alerts{i}  DBID: $output\n");
+    $cfg_bkup{'DBID'} = $output;
+
+}
+
+
+sub cfg_main {
+    #31134525: avoid running config files backup flow for zdlra backups if bkup configfiles is not configured.
+    if ( ($vars{'BKUP_TYPE'} eq "zdlra" or $vars{'BKUP_TYPE'} eq "dbrs") && $vars{'BKUP_CFG_DEST'} ne "yes" && $vars{'BKUP_TDE_DEST'} eq "none" ){
+      $LOG->log("Config files/tde backup destination is not configured for zdlra/dbrs. Exit from cfg_main function with code 0.\n");
+      return 0;
+    }
+    $LOG->logprt("############### CFG FILES BACKUP #####################\n");
+    cfg_init();
+    my $dbid;
+    my @cfg_oss;
+    my @cfg_nfs;
+    my @tde_oss;
+    my @tde_nfs;
+    my $err;
+    my $hostname ="NONE";
+    my $bkup_dest = $vars{'BKUP_TDE_DEST'} ne "none"? $vars{'BKUP_TDE_DEST'} : $vars{'BKUP_TYPE'};
+
+    # jpizana : Look for the Database ID as long as it is not a DG Observer Host.
+    if ($vars{'DG_OBSERVER_HOST'} =~ "no") {
+      get_dbid();
+    }
+
+    if ($ENV{HOSTNAME}) {
+      $hostname = $ENV{HOSTNAME};
+    } else {
+      ($hostname,$err) = $LOG->logexe("/bin/hostname");
+       if ( $err != 0 ) {
+         $LOG->logprt("$alerts{i} Unable to get hostname.\n");
+         return 1;
+      }
+    }
+
+    if ( $bkup_dest =~ "nfs") {
+      my $cfg_nfs_dir = $cfg_bkup{'NFS_LOC'} . "/$hostname-$cfg_bkup{'DBID'}" . "/$uuid_cid";
+      if (! -d "$cfg_nfs_dir" ){
+        $LOG->logexe("$MKDIR_PATH -p $cfg_nfs_dir",{runas=>"oracle"});
+        my @dstat = stat($cfg_nfs_dir);
+        my $uid = getpwuid($dstat[4]);
+        my $guid = getgrgid($dstat[5]);
+        if ($uid ne "oracle" && $guid ne "oinstall"){
+           $permissions_utils->chown("$cfg_nfs_dir",{verbose=>1});
+           $LOG->logexe("$CHMOD_PATH -v 755 $cfg_nfs_dir");
+        }
+      }
+      @cfg_nfs = (
+        "$CP_PATH $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OS_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/oscfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz $cfg_nfs_dir",
+        "$CP_PATH $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz $cfg_nfs_dir",
+      );
+      @tde_nfs = ("$CP_PATH $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz $cfg_nfs_dir",);
+    }
+
+    my $proxy_flag = ($proxy_host) ? "-proxy \"$proxy_host:$proxy_port\"" : "";
+
+    # all required commands
+    @cfg_oss = (
+      "$OSS_PATH -dbname $dbname $proxy_flag -base \$HOSTNAME-$cfg_bkup{'DBID'}-$custom_format-$backup_mode -putfile $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OS_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/oscfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz -localdir /var/opt/oracle/log/$dbname/oss/bkup_putfile",
+      "$OSS_PATH -dbname $dbname $proxy_flag -base \$HOSTNAME-$cfg_bkup{'DBID'}-$custom_format-$backup_mode -putfile $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz -localdir /var/opt/oracle/log/$dbname/oss/bkup_putfile"
+    );
+    
+
+    @tde_oss = (
+      "$OSS_PATH -dbname $dbname $proxy_flag -base \$HOSTNAME-$cfg_bkup{'DBID'}-$custom_format-$backup_mode -putfile $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz -localdir /var/opt/oracle/log/$dbname/oss/bkup_putfile",
+    );
+    my $tde_wallet_tar = "$hostname-$cfg_bkup{'DBID'}-$custom_format-$backup_mode/ohcfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz";
+    $LOG->logprt("\ntde_wallet_tar:$tde_wallet_tar\n");
+
+    #31072357: running tde->bkup_ks ensure config tarball will contain correct tde wallet backup 
+    #next tde mechanism is getting deprecated by 31970420 
+#    my $tde = tde->new($dbname, {log => $LOG});
+#    $tde->bkup_ks();
+
+    ################## DIRECTORY CREATION TO STORE CONFIG FILES ###########################
+    if (! -d  $cfg_bkup{'BKP_LOC'}){
+      $LOG->logexe("$MKDIR_PATH -p $cfg_bkup{'BKP_LOC'}",{runas=>"oracle"});
+      $permissions_utils->chown("$cfg_bkup{'BKP_LOC'}");
+      qx("$CHMOD_PATH 750 $cfg_bkup{'BKP_LOC'}");
+    }
+    $permissions_utils->chown("$cfg_bkup{'BKP_LOC'}",{recursive=>1}) if ($<==0);
+    # validate after creation
+    $LOG->logerr({ errorinfo => { ID => "COMMON_MISSING_DIR_ERR", ARGS => [$cfg_bkup{'BKP_LOC'}]}}) if (! -d  $cfg_bkup{'BKP_LOC'});
+    my @directories;
+    if ( $vars{'DG_OBSERVER_HOST'} eq "no" ) {
+      @directories = ($cfg_bkup{'OS_CFG_DIR'}, $cfg_bkup{'OH_CFG_DIR'});
+      @directories = map {  "$cfg_bkup{'BKP_LOC'}/$_" } @directories;
+    }elsif( $vars{'DG_OBSERVER_HOST'} eq "yes" ){
+      @directories = ($cfg_bkup{'OS_CFG_DIR'});
+      @directories = map {  "$cfg_bkup{'BKP_LOC'}/$_" } @directories;
+    }
+
+    $LOG->logprt("$alerts{i} Creating directories to store config files\n");
+    foreach my $dir(@directories){
+      # Step 1 Verifying if the principal directory for
+      # system and database file exists
+      if (-d "$dir/$cfg_bkup{'BKP_DATE'}"){
+            $LOG->logprt("$alerts{i} $dir .... OK\n");}
+      # Otherwise creating the parent directory
+      if (! -d $dir){
+            mkpath($dir);
+            
+          }
+      $permissions_utils->chown("$dir");
+      # Step 2 Creating the directory of the specific date for the config files
+      $LOG->logexe("mkdir $dir/$cfg_bkup{'BKP_DATE'}",{runas=>"oracle"});
+      if (! -d "$dir/$cfg_bkup{'BKP_DATE'}"){
+            $LOG->logprt("$alerts{i} Cannot create the destination directory for the config files: \n");
+            $LOG->logprt("$alerts{e} $dir/$cfg_bkup{'BKP_DATE'}\n");
+            return 1;
+          }
+    }
+    # END CREATING DIRECTORIES #######################################
+
+    # CREATING FILES
+    #get_dbid();
+
+    ####
+    # Changing directory
+    my $original_dir = cwd;
+    chdir $cfg_bkup{'DOC_SPECS_LOC'};
+
+    ##############################
+    # Tarballs creation          #
+    ##############################
+    tar_creation();
+    ##############
+   
+    # NFS upload files
+    if ( $bkup_dest =~ "nfs" and ( !defined($vars{'BKUP_CFG_DEST'}) or $vars{'BKUP_CFG_DEST'} =~ "no") ) {
+      if (defined $cfg_bkup{'MODE'}) {
+        # replace regular cfgfiles cmd with tde only cmds.
+        @cfg_nfs = @tde_nfs;
+      }
+      $LOG->logprt("$alerts{i} Uploading config files to NFS location\n");
+      my ($out, $err);
+      foreach my $action (@cfg_nfs){
+        my $tarname = (grep {/tar.gz/} split(/\s+/, $action))[0];
+        if ($tarname and ! -e $tarname) {
+            $LOG->logerr({ errorinfo => { ID => "COMMON_FILE_NOTFOUND_ERR", ARGS => [$tarname], EXIT_ON_FATAL => 0 }});
+        }
+        else {
+            ($out, $err) = $EXE->exe($action,{runas=>"oracle"});
+            # Dumping the log
+            $LOG->logprt( "$out\n");
+
+            if ($err){
+                $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => [$action, $logfile], EXIT_ON_FATAL => 0 }});
+                report_to_adminlogs("$alerts{e} Cannot upload config file tar\n to NFS clocation..");
+            }
+        }
+      }
+      if (!defined($tmpdir) || $tmpdir ne ($LOG->getlogd() . "/$uuid_cid") || $tmpdir eq "/" ){
+          $LOG->logprt("$alerts{w} Temporal directory for tar ball creation is not set correctly. Skipping removal.\n");
+      }elsif ($err){
+          $LOG->logprt("$alerts{w} Found errors while copying tar balls to final destination. Skipping temporal directory: $tmpdir removal.\n");
+      }else{
+          $LOG->logprt("$alerts{i} Removing temporary location $tmpdir.\n");
+          rmtree($tmpdir,1);
+      }
+    }else{
+       $LOG->logprt("$alerts{i} Skipping configuration files backup from legacy code.\n");
+    }
+
+    # OSS uploading files
+    # Adding validations to allow this only when oss is enabled
+    if ( $bkup_dest =~ m/oss/i ){
+      $permissions_utils->chown("$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OS_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/oscfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz");
+      $permissions_utils->chown("$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles\_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz");
+      $permissions_utils->chown("$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OS_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}");
+      $permissions_utils->chown("$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}");
+      # Uploading config files
+      if (defined $cfg_bkup{'MODE'}) {
+        # replace regular cfgfiles cmd with tde only cmds.
+        @cfg_oss = @tde_oss;
+      }
+      $LOG->logprt("$alerts{i} Uploading config files to cloud storage\n");
+      my ($out, $err);
+      foreach my $action (@cfg_oss){    
+        if(!bkup::retry_operation(\&upload_configfile_to_oss, $OSS_RETRY, $OSS_RETRY_SEC, $action)){
+          $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => [$action,$logfile]}});
+        }
+        #system($action);
+      }
+      if (!defined($tmpdir) || $tmpdir ne ($LOG->getlogd() . "/$uuid_cid") || $tmpdir eq "/" ){
+          $LOG->logprt("$alerts{w} Temporal directory for tar ball creation is not set correctly. Skipping removal.\n");
+      }elsif ($err){
+          $LOG->logprt("$alerts{w} Found errors while uploading tar balls to final destination. Skipping temporal directory: $tmpdir removal.\n");
+      }else{
+          $LOG->logprt("$alerts{i} Removing temporary location $tmpdir.\n");
+          rmtree($tmpdir,1);
+      }
+
+    }
+    # tmp files created for this script execution
+    my @tmpfile = ("$cfg_bkup{'DOC_SPECS_LOC'}/dbid", "$cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_OS_SPEC'}.e", "$cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}.e");
+    unlink(@tmpfile,1);
+    chdir $original_dir;
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
+    # Current date
+    printf("$alerts{i} Completed at time: %4d-%02d-%02d:%02d:%02d:%02d\n", $year+1900,$mon+1, $mday, $hour, $min, $sec);
+    # Clean old backups
+    cfg_clean_old_bkups();
+    #clean oss cfg file backup if oss is configured.
+    if ( $bkup_dest =~ m/oss/i ) {
+      bkup::retry_operation(\&cfg_clean_oss_bkups, $OSS_RETRY, $OSS_RETRY_SEC);
+    }
+    return 0;
+}
+
+#############################################################
+#                   ENCRYPTION                              #
+#############################################################
+# Function: _encrypt_disk_bkup()
+#
+# Description:
+#   Whether to encrypt the disk backup
+#
+
+sub _encrypt_disk_bkup {
+  my $edition = $vars{'EDITION'};
+  my $bkup_type = $vars{'BKUP_TYPE'};
+
+  my $encrypt_disk = $encrypt_disk_map->{$edition}->{$bkup_type};
+  $LOG->logerr({ errorinfo => { ID => "COMMON_MANDATORY_PARAMETERS_NOT_PROVIDED_ERR", ARGS => ["encrypt disk", $logfile]}}) if ( !defined $encrypt_disk );
+
+  return $encrypt_disk;
+}
+
+##############################################################
+#                 CATALOG AND DATAGUARD                      #
+##############################################################
+
+# Function: catalog_connection()
+#
+# Description:
+#   Verify the catalog connectivity
+sub catalog_connection {
+    # looks for online catalog
+    if ($vars{'BKUP_CATALOG'} eq "yes"){
+        # validating if the catalog is available
+        $LOG->logprt("$alerts{i} CATALOG SETTINGS \n");
+        
+        my $command="$ECHO_PATH 'exit' | $RMAN_PATH target=/ catalog /\@$vars{'BKUP_CATALOG_SID'}";
+        my $prefix="";$prefix="$SU_PATH oracle -c" if( $< == 0);
+        my $input = " $prefix $command \n";
+
+        my $stdout = qx($input);
+        # analyzing the output looking for an stack error if found modify
+        if ( $stdout =~ m/ERROR\sMESSAGE\sSTACK\sFOLLOWS/i){
+            $LOG->logprt("connection error list: \n");
+            $LOG->logprt($stdout);
+            $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => [$command,$logfile], EXIT_ON_FATAL => 0 }});
+        }
+        else {
+            $vars{'BKUP_CAT_CONN'} = "catalog /\@$vars{'BKUP_CATALOG_SID'}";
+            $LOG->logprt(" Catalog connection: ok\n");
+            $LOG->logprt(" Connection string: " . "$vars{'BKUP_CAT_CONN'}\n");
+        }
+
+    }
+}
+
+sub dg_mode {
+    # this functon is added to avoid calling directly the perl module
+    # also because this is an instantiated script
+    my $prefix="eval";$prefix="$SU_PATH - oracle -c" if( $< == 0);
+    my $command = "$prefix \"$ECHO_PATH 'SELECT DATABASE_ROLE FROM V\\\$DATABASE;' | $SQLPLUS_PATH -S -L / as sysdba\n\"";
+
+    my $mode_result = qx($command);
+     if ($mode_result =~ m/STANDBY/i){
+        $vars{'DG_MODE'} = "STANDBY";
+        if (not defined $vars{'OPSSWD'}) {
+          $vars{'OPSSWD'} = $REG->get("passwd");
+        }
+
+        # MODIFYING CONNECTION STRING FOR STANDBY
+        $TARGET = "sys/$vars{'OPSSWD'}\@$vars{'OSID'}";
+        # Adding support for standby in the backup handler
+        $backup_handler->Target($TARGET);
+       }
+     elsif($mode_result =~ m/PRIMARY/i){
+        $vars{'DG_MODE'} = "PRIMARY";
+       }
+     else{
+        $LOG->logprt("$alerts{e} No Dataguard supported configuration found\n");
+        $LOG->logerr({ errorinfo => { ID => "BKUP_EX_INTERNAL_ERR", ARGS => [$dbname,$logfile], EXIT_ON_FATAL => 0 }}); 
+        $vars{'DG_MODE'} = "NONE";
+     }
+}
+
+sub report_to_adminlogs {
+  my $msg = shift;
+  $LOG->logerr({ errorinfo => { ID => "COMMON_MISSING_PARAMETER_ERR", ARGS => ["Message"]}}) if (!defined $msg);
+
+  # Log message to DB alert log.
+  my @msgs = split(/\n/, $msg);
+  my ($sqlout,$sqlora) = $LOG->logsql("exec dbms_system.ksdwrt(2, '$msgs[0]')");
+
+  if ( "@{$sqlora}" eq '' ){
+    $LOG->logprt("$alerts{i} Message sent to DB alertlog.\n");
+  }else{
+    $backup_handler->log_vector($sqlora);
+    $LOG->logprt("$alerts{w} Unable to log msg into DB alertlog.\n");
+  }
+
+  # Log message to System Log.
+  $msg =~ s/\'//g;
+  my ($sysout,$syserr) = $LOG->logexe("$LOGGER_PATH -s \"$msg\" ",{runas => "oracle"});
+
+  if ( $syserr == 0 ){
+    $LOG->logprt("$alerts{i} Message sent to System log.\n");
+  }else{
+    $LOG->logprt("\n $syserr \n");
+    $LOG->logprt("$alerts{w} Unable to log msg into System log.\n");
+  }
+
+}
+
+###############################################################
+#      MISC FUNCTIONS - LOG CREATION AND ERRORS               #
+###############################################################
+# Function: create_log()
+#
+# Description:
+#   Creates a log in $HOME/bkup/<dbname>log/obkup
+sub create_log {
+    # creating timestamp
+     my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
+     my $timestamp = sprintf("%4d-%02d-%02d_%02d:%02d:%02d", $year+1900,$mon+1,$mday,$hour,$min,$sec);
+    # creating log file
+     my $dbname = $REG->get("dbname");
+     my $log_dir = "/var/opt/oracle/log/$dbname/obkup";
+     my $log_file = "$log_dir/obkup_$timestamp.log";
+     my $log_lnk = "$log_dir/obkup.log";
+     mkpath($log_dir);
+     if (! -d $log_dir){
+        $LOG->logerr({ errorinfo => { ID => "COMMON_MKDIR_ERR", ARGS => [$log_dir]}});
+     }
+     else{
+        if ($< == 0){
+          open SET_RIGHTS, "|-", "$SU_PATH - "  or $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => ["Setting rights to $log_dir", $logfile]}});
+          $permissions_utils->chown("$log_dir",{recursive=>1,owner=>"oracle:dba"});
+          print SET_RIGHTS "$CHMOD_PATH -R 700 \"$log_dir\"\n";
+          close SET_RIGHTS;
+        } else {
+          $permissions_utils->chown("$log_dir",{recursive=>1,owner=>"oracle:dba"});
+          system("$CHMOD_PATH -R 700 \"$log_dir\"")
+        }
+     }
+
+     if ($< == 0 ) {
+        open CREATE_LOG, "|-", "$OCMD" or die $LOG->logerr({ errorinfo => { ID => "COMMON_FILE_NOTFOUND_ERR", ARGS => [$log_file]}});
+        print CREATE_LOG "touch $log_file\n";
+        print CREATE_LOG "rm -f $log_lnk\n";
+        print CREATE_LOG "ln -s $log_file $log_lnk\n";
+        close CREATE_LOG;
+     } else {
+        system("$TOUCH_PATH $log_file");
+        system("$RM_PATH -f $log_lnk");
+        system("$LN_PATH -s $log_file $log_lnk");
+     }
+
+    # post execution
+    unless ( (-e $log_file) || (-e $log_lnk)){
+      $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => ["Create log file", $logfile]}});
+    }
+
+    return $log_file;
+}
+
+###############################################################
+#           MISC FUNCTIONS - RESTORE VALIDATION               #
+###############################################################
+# Function: restore_validation()
+#
+# Description:
+#   Perform restore validation
+sub restore_validation {
+    # validation mode
+    my $rv_mode = shift;
+    # mode validation
+    if ( (not defined $rv_mode) || ($rv_mode eq 'default') ) {
+        # default restore validation mode is backup type
+        $rv_mode = $vars{'BKUP_TYPE'};
+    }
+
+    if ( $rv_mode eq 'zdlra' or $rv_mode eq 'dbrs' ) {
+        $LOG->logprt("$alerts{i} ZDLRA doesn't need restore validation from instance. Skipping\n");
+        return 0; #ZDLRA handles the integrity of the backups automaticly. There is not need of manual triggering
+    }
+
+    # basic info
+    $LOG->logprt("########################## PERIODICAL RESTORE VALIDATION ################################ \n");
+    $LOG->logprt("DB instance: $dbname\n");
+    $LOG->logprt("PDB:" . uc $pdbf ."\n") if (defined $pdbf and $pdbf ne "");
+    $LOG->logprt("restore validation mode: $rv_mode\n");
+
+    my ($rv_res, $rv_err);
+
+    # restore validation
+    if ( $rv_mode eq 'none' || $rv_mode eq 'cfg' ) {
+        $LOG->logprt("Nothing to do with restore validation\n");
+        $LOG->logprt("Restore validation is skipped !\n");
+        return 0;
+    } elsif ( ($vars{'BKUP_TYPE'} !~ $rv_mode) || ( ($rv_mode ne 'oss') && ($rv_mode ne 'disk') && ($rv_mode ne 'diskoss') && ($rv_mode ne 'nfs') ) ) {
+        # invalid mode
+        $rv_res = 1;
+        push(@$rv_err, "$alerts{e} Invalid restore validation mode: $rv_mode !\n");
+        push(@$rv_err, "$alerts{w} Valid restore validation mode: disk / oss / diskoss\n");
+        push(@$rv_err, "$alerts{w} Restore validation mode should equal or be a subset of your backup type ($vars{'BKUP_TYPE'})\n");
+    } else {
+        # restore validation call
+        my @curtime = split(" ", localtime(time));
+        $LOG->logprt("Start time : @curtime\n");
+        ($rv_res, $rv_err) = $backup_handler->restore_validate($rv_mode,{pdb => $pdbf, timestamp => $timestamp, operation => "CDB_BACKUP"});
+        @curtime = split(" ", localtime(time));
+        $LOG->logprt("End time : @curtime\n");
+    }
+
+    # report results
+    if ($rv_res == 0) {
+        $LOG->logprt("$alerts{i} ....... OK\n");
+        $LOG->logprt("$alerts{i} Restore Validation is Completed\n");
+    } else {
+        my $error_report = "$alerts{e} Restore Validation Failed ...\n$alerts{e}-Detail\n";
+        foreach (@$rv_err) {
+            $error_report = "${error_report}$_";
+        }
+        $LOG->logprt($error_report);
+        report_to_adminlogs($error_report);
+        $LOG->logerr({ errorinfo => { ID => "BKUP_EX_RESTORE_VAL_ERR", ARGS => [$rv_mode,$logfile]}});
+    }
+
+    return 0;
+}
+
+#Close databases that started in mount mode
+sub rollback_pdb_status {
+  return if not defined $pdbs;
+  my @pdbs_array = split(/,/,$pdbs);
+  for (my $pdb_pointer = 0; $pdb_pointer < scalar @mounted_pdbs; $pdb_pointer++) {
+    if ($mounted_pdbs[$pdb_pointer] == 1) {
+      my ($sqlout,$sqlora) = $DB->sql("ALTER PLUGGABLE DATABASE $pdbs_array[$pdb_pointer] CLOSE IMMEDIATE");
+   }
+  }
+}
+
+
+# Function: restore_preview_header_validation()
+#
+# Description:
+#    Perform restore peview validate header
+sub restore_preview_validate_header{
+    my ($validate, $errors, $error_data)=();
+    if(defined $pdbs) {
+ 	($validate, $errors, $error_data) = $backup_handler->restore_validate_preview_header({pdb => $pdbs, print_to_log => "yes", operation => "CDB_BACKUP", tns_services_list => \@tns_services_list});
+    } else {
+	($validate, $errors, $error_data) = $backup_handler->restore_validate_preview_header({print_to_log => "yes", operation => "CDB_BACKUP", tns_services_list => \@tns_services_list});
+    }
+    $LOG->logprt("$alerts{i} VALIDATING DATABASE BACKUPS:\n");
+    if ($validate == 0){
+        $LOG->logprt(" -> All backup pieces are ok\n");
+    }else{
+	my $error_report = join("\n", @$errors);
+        $LOG->logprt(" ->  Failed to validate backup pieces\n");
+        $LOG->logerr({ errorinfo => { ID => "BKUP_EX_VERIFY_BACKUP_PIECES_ERR", ARGS => [$dbname,$error_report,$logfile]}});
+    }
+
+   return $validate;
+}
+
+
+# Function: archivelog_restore_validation()
+#
+# Description:
+#   Perform archivelog restore validation
+sub archivelog_restore_validation {
+    # mode validation
+    if ( $vars{'BKUP_TYPE'} eq "disk" ) {
+        $arv_mode = 'disk';
+    } elsif (($vars{'BKUP_TYPE'} eq "oss" ) || ($vars{'BKUP_TYPE'} eq "diskoss")) {
+        $arv_mode = 'oss';
+    }
+
+    # basic info
+    $LOG->logprt("########################## PERIODICAL RESTORE VALIDATION ################################ \n");
+    $LOG->logprt("DB instance: $dbname\n");
+    $LOG->logprt("archivelog restore validation mode: $arv_mode\n");
+
+    my ($arv_res, $arv_err);
+
+    # restore validation
+    if ( $arv_mode eq 'none' || $arv_mode eq 'cfg' || $arv_mode eq 'nfs'|| $arv_mode eq 'disknfs' || $arv_mode eq 'zdlra' || $arv_mode eq 'dbrs') {
+        $LOG->logprt("Nothing to do with archivelog restore validation\n");
+        $LOG->logprt("Archivelog restore validation is skipped !\n");
+        return 0;
+    } elsif ( ($vars{'BKUP_TYPE'} !~ $arv_mode) || ( ($arv_mode ne 'oss') && ($arv_mode ne 'disk') && ($arv_mode ne 'diskoss') ) ) {
+        # invalid mode
+        $arv_res = 1;
+        push(@$arv_err, "$alerts{e} Invalid archivelog restore validation mode: $arv_mode !\n");
+        push(@$arv_err, "$alerts{w} Valid archivelog restore validation mode: disk/ oss/ diskoss \n");
+        push(@$arv_err, "$alerts{w} Archivelog restore validation mode should equal or be a subset of your backup type ($vars{'BKUP_TYPE'})\n");
+    } else {
+        # archive restore validation call
+        my @curtime = split(" ", localtime(time));
+        $LOG->logprt("Start time : @curtime\n");
+        ($arv_res, $arv_err) = $backup_handler->restore_validate_archivelog($arv_mode);
+        @curtime = split(" ", localtime(time));
+        $LOG->logprt("End time : @curtime\n");
+    }
+
+    # report results
+    if ($arv_res == 0) {
+        $LOG->logprt("$alerts{i} ....... OK\n");
+        $LOG->logprt("$alerts{i} Archivelog Restore Validation is Completed\n");
+    } else {
+        my $error_report = "$alerts{e} Archivelog Restore Validation Failed ...\n$alerts{e}-Detail\n";
+        foreach (@$arv_err) {
+            $error_report = "${error_report}$_";
+        }
+        $LOG->logprt($error_report);
+        report_to_adminlogs($error_report);
+        $LOG->logerr({ errorinfo => { ID => "BKUP_EX_RESTORE_VAL_ERR", ARGS => ["Archivelogs", $logfile]}}); 
+    }
+
+    return 0;
+}
+
+#bug: 31494454: Function bkup_standby_pfile Deprecated as part of oracle user support. Autobackup is now used.
+sub bkup_standby_pfile {
+    #Backup spfile, this is needed to avoid spfile backup unsync between primary and standby
+    
+    #Bug 29464331 - Perform spfile backup for non-asm Dataguard env as well
+    my $grid_oh = $REG->get("grid_home");
+    my $asmcmd_path = $PathProvider->get_oraclehome_cmd_path($grid_oh,'asmcmd');
+
+    if ( ($vars{'CLUSTER'} =~ m/rac/) || ($vars{'CLUSTER'} eq "siasm") ) { 
+	    my $grid = grid->new({ log => $LOG });
+	    my $spfile_loc = $REG->get("bkup_asm_spfile");
+	    my $dirname = dirname($spfile_loc);
+	    my $current_time = strftime('%Y%m%d',localtime);
+	    my $cp_cmd = "$ECHO_PATH \'cp $spfile_loc $dirname/spfile$dbname"."_"."$current_time.ora \' | $asmcmd_path";
+	    my ($out,$err) = $grid->logexe($cp_cmd, {runas => "grid"} );
+	    $LOG->logerr({ errorinfo => { ID => "BKUP_EX_SPFILE_ERR", ARGS => ["spfile$dbname"."_"."$current_time.ora", $logfile]}}) if ($err); 
+
+	    #Only save a week of backups
+	    my $list_cmd = "$ECHO_PATH \'find $vars{'DATA_GRP'}/$dbname/ spfile$dbname\_*.ora\' | $asmcmd_path | $SED_PATH 's/ASMCMD> //' | $GREP_PATH -v exit | $SORT_PATH | $HEAD_PATH -n -7";
+	    my $file_list;
+	    ($file_list,$err) = $grid->logexe($list_cmd, {runas => "grid"});
+	    if ($err) {
+		$LOG->logprt("WARN: Could not list SPFILE Backups\n");
+		return;
+	    }
+	    #Delete backups outside retention window
+	    for my $expired_file (split ("\n", $file_list)) {
+		my $rm_cmd = "$ECHO_PATH \'rm $expired_file\' | $asmcmd_path 2>/dev/null | $GREP_PATH ASMCMD";
+		($out,$err) = $grid->logexe($rm_cmd, {runas => "grid"});
+		$LOG->logprt("WARN: Could not delete SPFILE Backup: $expired_file\n") if $err;
+	    }
+    }
+    else{
+	$LOG->logprt("Performing Backup of Standby Database Spfile for $dbname..\n");
+	my $oracle_home = "$vars{'OHOME'}";
+        my $dbs_loc = $DB->get_dbs_loc();
+	my $spfile_loc = "$dbs_loc/spfile$dbname.ora";
+	my $dirname = dirname($spfile_loc);
+	if (-e $spfile_loc){
+		my $current_time = strftime('%Y%m%d%H%M%S',localtime);
+		my $cmd = "$CP_PATH -pv $spfile_loc $dirname/spfile$dbname"."_"."$current_time.ora";
+		my ($out,$exit_status) = $LOG->logexe($cmd, { runas => 'oracle' });
+		if ( $exit_status ne "0" ){
+			$LOG->logprt("WARN: Could not backup SPFILE\n") ;
+			return;
+		}
+		#Find spfile backups created before 7 days
+		my $backup_spfile_list;
+		$cmd="$FIND_PATH $dirname -name \"spfile$dbname\_*\" -type f -mtime +7 -print";
+		($$backup_spfile_list,$exit_status) = $LOG->logexe($cmd, { runas => 'oracle' });
+		if ($exit_status ne "0") {
+			$LOG->logprt("WARN: Could not list SPFILE Backups\n");
+			return;
+		}
+		#Delete backups outside retention window (7 days)
+		for my $expired_file (split ("\n", $$backup_spfile_list)) {
+			my $rm_cmd = "$RM_PATH $expired_file";
+			($out,$exit_status) = $LOG->logexe($rm_cmd, { runas => 'oracle' });
+			$LOG->logprt("WARN: Could not delete SPFILE Backup: $expired_file\n") if $exit_status;
+		}
+	}
+	else{
+		$LOG->logprt("Warning: $spfile_loc does not exist. Unable to backup standby spfile.\n");
+	}
+
+    }
+
+}
+
+sub calculate_section_size {
+  my $section_size = 16;       #default section size
+  my $sql_cmd = "select max(round(bytes/1024/1024/1024)) from v\$datafile";
+  my ($sqlout,$sqlora) = $LOG->logsql($sql_cmd);
+
+  $LOG->logerr({ errorinfo => { ID => "BKUP_EX_SQL_CMD_FAILURE", ARGS => [$sql_cmd,$logfile]}}) if (@$sqlora);
+  # max datafile size in Gig.
+  my $max_datafile_size = @$sqlout[0];
+  $LOG->logprt("largest data file size is $max_datafile_size\n");
+
+  # 16GB size max datafile size <= 4TB
+  # 32GB size 4TB > max datafile size <= 8 TB
+  # 64GB size 8TB >  max datafile size <= 16TB
+  # 128GB max datfile size > 16TB
+
+  if ($max_datafile_size <= 4096) {
+     $section_size = 16;       #default section size
+  } elsif ($max_datafile_size <= 8192) {
+     $section_size = 32;
+  } elsif ( $max_datafile_size <= 16384) {
+     # 64GB size 8TB >  max datafile size < 16TB
+     $section_size = 64;
+  } else {
+     # 128GB max datfile size > 16TB
+     $section_size = 128;
+  }
+
+  #  max of 255 pieces
+  #  if datafilesize > 16TB, make sure that we do not have more than 250 pieces
+  if ($max_datafile_size > 16384) {
+    my $tmp_size = (int($max_datafile_size/250 + 1));
+    $section_size = $tmp_size if ($tmp_size > $section_size);
+  }
+
+  $section_size .= 'G'; #add G to indicate Gig
+
+  return $section_size;
+}
+
+sub level0_bkup_exists {
+  my $sql_cmd = "select count(*) from  v\$backup_datafile where incremental_level = 0";
+  my ($sqlout,$sqlora) = $LOG->logsql($sql_cmd);
+
+  $LOG->logerr({ errorinfo => { ID => "BKUP_EX_SQL_CMD_FAILURE", ARGS => [$sql_cmd,$logfile], EXIT_ON_FATAL => 0 }}) if (@$sqlora);
+
+  my $level0_files =  @$sqlout[0];
+  if ($level0_files  < 1)  {
+    return 0;
+  }
+
+  return 1;
+};
+
+#Bug 29714551: odg.pm was functionality to check if datagaurd is enabled. But current odg.pm tries to
+#get sys password at object creation time. We want to eliminate the sys password look up at this time and 
+#hence this subroutine.
+#Once odg.pm has the fix, we will use it again.
+sub is_dataguard_enabled {
+
+  my $command = "select nvl(value,'none') value from  v\$parameter where name='log_archive_config'";
+  my $output = $DB->q1($command) || "";
+
+  if ($output =~ /dg_config/i){
+    $LOG->log("Dataguard is enabled\n");
+    return 1;
+  }
+
+  $LOG->log("Dataguard is not enabled\n");
+  return 0;
+}
+
+
+#Bug 29714551: odg.pm was functionality to check datagaurd mode. But current odg.pm tries to
+#get sys password at object creation time. We want to eliminate the sys password look up at this time and 
+#hence this subroutine.
+#Once odg.pm has the fix, we will use it again.
+sub dataguard_mode {
+  my $dg_mode = $DB->q1('select database_role from v$database') || "NONE";
+  $dg_mode = "STANDBY" if ($dg_mode =~ /STANDBY/);
+  $LOG->log("Dataguard mode is $dg_mode\n");
+  return $dg_mode;
+}
+
+
+# Bug 29709489
+# For PDB OSS backups, change the handle format to avoid duplicates.
+sub bkup_pdb_oss_generate_format {
+  use DBAAS::Utils::TimeUtils;
+  use POSIX qw(strftime);
+  my $timeUtils = TimeUtils->new({ log => $LOG });
+  # Add the current timestamp (HHMMSSmmm) to the identifier.
+  my $timestamp = $timeUtils->get_time_in_secs_and_microsecs();
+  my $identifier = strftime "%H%M%S", localtime $timestamp;
+  $identifier .= (sprintf "%03d", ($timestamp-int($timestamp))*1000) . "-";
+  # Create and attach a string of random hexadecimal characters.
+  my @chars = ('0' .. '9', 'A' .. 'F');
+  $identifier .= join "" => map $chars[rand @chars], 1 .. 8;
+  return "SET CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE SBT TO '%F-$identifier';";
+} 
+
+#Bug 28482725- Cleanup Applied Archives on Standby Environment
+#Init bkup module object
+sub _init_bkup{
+   # creating bkup module object to handle the rman request
+   catalog_connection();
+   $LOG->logprt("catalog mode  $vars{'BKUP_CATALOG'}\n");
+
+   my $bkup_handler = bkup->new($dbname, "no", "",{ log => $LOG , xparams => $xparams}, );
+   # validations for the backup module instantiation
+   my $cat_on = "no";
+   if ($vars{'BKUP_CAT_CONN'} eq "" &&  $vars{'BKUP_CATALOG'} eq "yes"){
+    $LOG->logprt("$alerts{i} Catalog is configured but unable to connect to it.\n");
+   }elsif( $vars{'BKUP_ZDLRA'} eq "yes" && defined($vars{'BKUP_ZDLRA_URL'}) ){
+    # The ZDLRA url is the registered alias to connect to the Recovery Appliance.
+    $cat_on = "yes";
+    $vars{'BKUP_CAT_CONN'} = "CATALOG /\@$vars{'BKUP_ZDLRA_URL'}";
+   }elsif( $vars{'BKUP_DBRS'} eq "yes" ){
+    $cat_on = "yes";
+    $vars{'BKUP_CAT_CONN'} = "CATALOG /\@".$bkup_handler->get_dbrs_tns_alias();
+   }else{
+    $cat_on = $vars{'BKUP_CATALOG'};
+   }
+   $bkup_handler->set_catalog($cat_on, $vars{'BKUP_CAT_CONN'});
+   return $bkup_handler;
+}
+
+#Function: $output = _validate_tar_includes_tde_wallet(<TAR GZ FILE PATH>)
+#
+#Description:
+#  Validates if tde ewallet entry exists on tar using os command:
+#  tar -tf $tar_file | grep -i tde | grep ewallet.p12
+#
+#Input:
+#  tar gz file path to be validated
+#
+#Output:
+#  return 1 if there is an entry on tar which contains tde and ewallet.p12
+#  return 0 if tar file doesn't exist or there was not found any tde ewallet entry on tar
+
+sub _validate_tar_includes_tde_wallet {
+  my $tar_file = shift;
+  $LOG->logerr({ errorinfo => { ID => "COMMON_MISSING_PARAMETER_ERR", ARGS => ["Config files tar path"], EXIT_ON_FATAL => 1 }}) if (!defined $tar_file);
+  if(-e $tar_file){
+    my ($out, $err) = $LOG->logexe("$TAR_PATH -tf $tar_file | $GREP_PATH -i tde | $GREP_PATH ewallet.p12");
+    if(!$err && $out){
+      $LOG->log("Wallet found in $tar_file.");
+      return 1;
+    }
+  }
+  # If file not created, backup anyway
+  $LOG->log("Wallet not found in $tar_file. Backing up tde wallet explicitly.");
+  return backup_tde_wallet();
+}
+
+
+#Function: $tag = _get_tag_from_list
+#
+#Description:
+#   Get the last TAG from rman using list backup summary or list restore point all
+#
+#Output: "" when cannot find any tag or RMAN Tag
+
+sub _get_tag_from_list {
+    my $tag = "";
+    my $tag_prefix;
+    my $tag_word = "TAG";
+    my $list_command =  'list backup summary;';
+    $tag_word = $keep_option_tag if (defined ($keep_option_tag) and $keep_option_tag ne "" );
+
+    #Bug 31096855: keep option creates a restore point. With a custom tag, the
+    #restore point is case sensitive #but the tags created by RMAN are in
+    #uppercase.
+    #
+    if (defined ($keep_option_tag) and $keep_option_tag ne "" ) {
+       $list_command =  'list restore point all;'
+    }
+    $tag_prefix = "-E '($tag_word)'";
+
+    my ($output,$exit_status) = $LOG->logexe("$MKDIR_PATH -vp $tmpdir",{runas => "oracle"});
+    my $lfile = "$tmpdir" . "/" . "list";
+    my $ftags = "$tmpdir" . "/" . "tags";
+
+    my $list_backup = [
+    "SPOOL LOG to '$lfile';",
+    $list_command,
+    "SPOOL LOG OFF;",
+    ];
+    my ($out, $err) = $backup_handler->rman($list_backup);
+    my $bkup_errors = $backup_handler->obkup_errors($out);
+
+    if (@$bkup_errors) {
+      my $error_report = "$alerts{e} Cannot list the backup summary ";
+      foreach (@$bkup_errors) {
+        $error_report = "${error_report}$_";
+      }
+      $LOG->logprt($error_report);
+      report_to_adminlogs($error_report);
+      $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_SUMMARY_ERR", ARGS => [$logfile], EXIT_ON_FATAL => 0 , SET_WARNING => "YES"}});
+      return $tag;
+    }
+
+    my($out_tag,$err_tag)=$LOG->logexe("$CAT_PATH $lfile | $GREP_PATH $tag_prefix | $AWK_PATH '{print \$NF}' > $ftags",{runas => "oracle"});
+
+    open my $file, '<', $ftags or $LOG->logdie("Could not open file: $!");
+    my @taglist = <$file>;
+    close $file;
+    rmtree($tmpdir,1);
+
+    if (scalar(@taglist) == 0) {
+      $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_SUMMARY_ERR", ARGS => [$logfile], EXIT_ON_FATAL => 0, SET_WARNING => "YES"}});
+      return $tag;
+    } else {
+      # Get the latest TAG<date>T<time>
+      $tag = $taglist[-1];
+      $tag =~ s/^\s+|\s+$//g;
+    }
+
+    return $tag;
+}
+
+#Function : upload_configfile_to_oss
+#Description: execute command to upload configfile tar to oss
+#Input:
+#  $action: oss command to upload configfile tar to oss 
+#Output:
+#  1: there were no errors uploading tar or those can be dismissed
+#  0: Authorization error was faced, then it requires a retry
+#  Throw COMMON_CMD_EXECUTION_ERR if other error was faced
+sub upload_configfile_to_oss{
+    my $action = shift;
+
+    my $tarname = (grep {/tar.gz/} split(/\s+/, $action))[0]; 
+    if ($tarname and ! -e $tarname) {
+        $LOG->logprt("$alerts{e} Tar $tarname is not created because corresponding CFG file is not found\n. Command: $action\n");
+    }
+    else {     		
+        my ($out, $err) = $EXE->exe($action,{runas=>"oracle"});
+
+        # Dumping the log
+        $LOG->logprt( "$out\n");
+
+        if ($err){
+            my $token_err = grep {m/$auth_token/i} $out;
+            my $unauth_err = grep {m/$unauthorized_err/i} $out;
+            $LOG->logprt("$alerts{e} Cannot upload config file tar\n Cloud Storage Command: $action\n");
+            # Determining known issues
+            if ($token_err || $unauth_err){
+                $LOG->logprt("$alerts{e} The DBaaS Backup api cannot authenticate, please check your Cloud Storage credentials\n");   
+                report_to_adminlogs("$alerts{e} The DBaaS Backup api cannot authenticate, please check your Cloud Storage credentials.");
+                return 0;
+            }
+            $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => [$action,$logfile]}});
+        }
+    }
+    return 1;
+}
+
+#Method to enforce $cfg_bkup{'TDE_KS_LOC'}  gets populated with legitim tde wallet location
+sub enforce_tde_ks_loc_population {
+    # Getting TDE Wallet location from DB
+    my $tde = tde->new($dbname, { log => $LOG } );
+    my $ewallet = $tde->_get_ewallet();
+    my $tde_ks_loc = $ewallet->get_tde_ks_loc();
+    if ( defined($tde_ks_loc) ){
+       $cfg_bkup{'TDE_KS_LOC'} = $tde_ks_loc;
+    }elsif(! -e $cfg_bkup{'TDE_KS_LOC'}){
+       $LOG->logprt("handle location stored at CREG \n");
+       $cfg_bkup{'TDE_KS_LOC'} = $REG->get("tde_ks_loc");
+    }
+}
+
+#Method to enforce including legitim tde_ks_loc on configfiles backup spec
+sub add_tde_ks_loc_to_cfg_spec {
+    enforce_tde_ks_loc_population();
+    my ($out,$err) = $LOG->logexe("$GREP_PATH \'\^$cfg_bkup{'TDE_KS_LOC'}\$\' $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}");
+    if ($err || $out ne "$cfg_bkup{'TDE_KS_LOC'}"){
+        ($out,$err) = $LOG->logexe("$ECHO_PATH '$cfg_bkup{'TDE_KS_LOC'}' >> $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}");
+        if ($err){
+            $LOG->logerr("ERROR: Couldn't add tde wallet location $cfg_bkup{'TDE_KS_LOC'} to $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}\n");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+sub add_db_wallet_loc_to_cfg_spec {
+    my $wallet_loc = $REG->get("wallet_loc");
+    my ($out,$err) = $LOG->logexe("$GREP_PATH \'\^$wallet_loc\$\' $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}");
+    if ($err || $out ne "$wallet_loc"){
+        ($out,$err) = $LOG->logexe("$ECHO_PATH '$wallet_loc' >> $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}");
+        if ($err){
+            $LOG->logerr("ERROR: Couldn't add db wallet location $wallet_loc to $cfg_bkup{'DOC_SPECS_LOC'}/$cfg_bkup{'BKUP_CFG_DB_SPEC'}\n");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+
+#Function : backup_currentcf
+#Description: execute command to current controlfile  oss
+#Throw BKUP_EX_BACKUP_OP_ERR when backup of current controlfile fails
+sub backup_currentcf {
+    $LOG->logerr({ errorinfo => { ID => "COMMON_CANNOT_ACCESS_CATALOG_ERR", ARGS => [$dbname, $logfile]}}) if ($vars{'BKUP_CATALOG'} eq "yes" and $vars{'BKUP_CAT_CONN'} eq "");
+    $LOG->logprt("$alerts{i} BACKUP CURRENT CONTROLFILE\n");
+    if ( $vars{'BKUP_TYPE'} eq "oss" ) {
+        $LOG->logprt("$alerts{i} BACKING CURRENT CONTROL FILE TO UP TO OSS\n");
+        
+        my $rman_oss_commands = [];
+        # Get the rman commands to backup archive log to oss
+        $rman_oss_commands = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, max_channels => 1, bkp_type => "oss", tns_services => \@tns_services_list});
+        my $bkup_errors  = execute_backup($rman_bkup_current_controlfile_oss, {rman_cfg => $rman_oss_commands, encrypt => "ON"});
+        if (@$bkup_errors) {
+            my $error_report = "$alerts{e} Cannot complete Current Controlfile Backup to Cloud Storage\n";
+            foreach (@$bkup_errors) {
+                $error_report = "${error_report}$_";
+            }
+            $LOG->logprt($error_report);
+            report_to_adminlogs($error_report);
+            $LOG->logerr({ errorinfo => { ID => "BKUP_EX_CURR_CFILE_BACKUP_ERR", ARGS => ["cloud storage",$logfile]}});
+        }
+    } else {
+        $LOG->logprt("$alerts{i} Nothing to do. Current ControlFile backup is available for OSS only configuration\n");
+    }
+
+    return 0;
+}
+
+
+
+
+sub opc_install{
+
+  my $opc_installer = opc_installer->new($dbname,$LOG);
+  return 1 if $opc_installer->opc_install($oss_opts);
+  return 0;
+
+}
+
+
+sub validate_oss_channel_connection {
+
+  my $retry_count = 1;
+  my $opc_installer = opc_installer->new($dbname,$LOG);
+  my $temp=0;
+  while(1) {
+   #Validate if the wallet exists
+   my $return_code = $opc_installer->is_wallet_exists();
+   my $cert_error = 0;
+   #Validate RMAN CHANNEL CONNECTION ONLY IF WALLET EXISTS
+   if($return_code == 1) { $cert_error = $backup_handler->is_cert_invalidate_error_found(); }
+   #INSTALL OPC MODULE IF WALLET NOT FOUND/CERT ISSUE FOUND
+   if($temp < $retry_count && ($return_code == 0 || $cert_error == 1) ) {
+           #KBHS-00715.*ORA-290
+        $LOG->logprt(" -> Installing opc module\n");
+        if(! bkup::retry_operation(\&opc_install, $OSS_RETRY, $OSS_RETRY_SEC)) {
+            $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => ["Re-Install Objectstore for Invalid Cert chain", $logfile]}});
+         }
+        $temp++;
+    #IF RETRY COUNT EXCEEDED AND STILL WALLET NOT FOUD/CERT ISSUE FOUND => THROW CERT ERROR
+    } elsif($return_code == 0 || $cert_error == 1 ) {
+       #throw exception for Invalid Certificate chain
+        $LOG->logerr({ errorinfo => { ID => "COMMON_CERTS_NOT_FOUND_ERR", ARGS => [$oss_opts->{bkup_oss_url},$logfile]}});
+    } else {
+        #IF WALLET EXISTS, RETURN
+        $LOG->logprt("Wallet issue/Cert issue not found. \n");
+        last;
+    }
+
+  }
+}
+
+# If rmanArchiveLogChannels is not defined in CREG, 
+#  consider max_channels per node as 8.
+sub get_max_channels_per_node_archlog {
+  my $max_channels = undef;
+  if ($vars{'AL_BKUP_CHANNELS_NODE'} eq 'default') {
+    $max_channels = 8;
+  }
+  return $max_channels;
+}
+
+# Returns ALLOCATE CHANNEL statements for destination 
+#  passed as bkup_type
+sub get_rman_allocation_command_archlog {
+  my $bkup_type = shift;
+  my $max_channels = get_max_channels_per_node_archlog();
+  my $channel_opts = { bkp_type => $bkup_type, 
+                       dg_enabled => $dataguard_state, 
+                       dg_mode => $dataguard_mode, 
+                       operation => 'AL_BACKUP', 
+                       tns_services => \@tns_services_list, 
+                       max_channels => $max_channels
+                     };
+  return $backup_handler->rman_config_common($channel_opts);
+}  
+
+# Branches out flow for archivelog or for datafiles.
+sub backup_flow_for_transition {
+  $LOG->logprt("$alerts{i} Start transition flow \n");
+  $archivelog eq "yes"? trnstn_archivelog_backup(): trnstn_datafile_backup();
+  $LOG->logprt("$alerts{i} End transition flow \n");
+}
+
+# Archivelog backup of two destination during transition.
+# During rollback, backups happens only to OSS.
+sub trnstn_archivelog_backup {
+  $LOG->logprt("$alerts{i} Start archivelog backup wrapper \n");
+  my $backup_start_time = strftime "to_date('%d-%m-%Y %H:%M:%S', 'DD-MM-YYYY HH24:MI:SS')", localtime; 
+  if ( uc($vars{'TRANSITION_STATE'}) eq "ROLLBACK" ) {
+    my $source = $REG->get("prev_bkup_type") || '';
+    $LOG->logprt("$alerts{i} Backup for ROLLBACK \n");
+    if ($source eq "oss") {
+      trnstn_archivelog_to_oss($backup_start_time);
+      trnstn_backup_contolfile_to_disk();
+    }
+    if ($source eq "dbrs") {
+      trnstn_archivelog_to_dbrs();
+    }
+  } else {
+      trnstn_archivelog_to_dbrs();
+      trnstn_archivelog_to_oss($backup_start_time);
+  }
+  tnsntn_cleanup_fra();
+  $LOG->logprt("$alerts{i} End archivelog backup wrapper \n");
+}
+
+
+sub trnstn_backup_contolfile_to_disk {
+  my $rman_backup_command = ["RUN {",
+                          "   ALLOCATE CHANNEL C1 DEVICE TYPE DISK;",
+                          "   BACKUP CURRENT CONTROLFILE;",
+                          "  }",
+                         ];
+  trnstn_execute_backup($rman_backup_command);
+
+}
+
+# Takes archivelog backup to DBRS
+sub trnstn_archivelog_to_dbrs {
+  $LOG->logprt("$alerts{i} Start archivelog backup to DBRS \n");
+  my $destination = "dbrs";
+  set_catalog_dbrs();
+  my $rman_backup_command = ["BACKUP AS COMPRESSED BACKUPSET ARCHIVELOG ALL NOT BACKED UP FORMAT '$bkup_archive_format';"];
+  my $rman_allocation_command = get_rman_allocation_command_archlog($destination); 
+  my $bkup_errors  = trnstn_execute_backup($rman_backup_command, {rman_cfg => $rman_allocation_command, encrypt => "OFF"});
+  if (@$bkup_errors) {
+    my $error_report = "$alerts{e} Cannot complete the Archivelogs Backup to ".uc($destination)." \n";
+      foreach (@$bkup_errors) {
+        $error_report = "${error_report}$_";
+      }
+    $LOG->logprt($error_report);
+    report_to_adminlogs($error_report);
+    $LOG->logerr({ errorinfo => { ID => "BKUP_EX_ARCHIVELOG_BACKUP_ERR", ARGS => [uc($destination),$logfile]}});
+  }
+  $LOG->logprt("$alerts{i} End archivelog backup to dbrs \n");
+}
+
+# Takes archivelog backup to OSS
+sub trnstn_archivelog_to_oss {
+  $LOG->logprt("$alerts{i} Start archivelog backup to OSS\n");
+  my $backup_start_time = shift;
+  my $destination = "oss";
+  unset_catalog();
+  my $rman_backup_command = ["BACKUP AS COMPRESSED BACKUPSET ARCHIVELOG UNTIL TIME \"$backup_start_time\" NOT BACKED UP 2 TIMES FORMAT '$bkup_archive_format';"];
+  my $rman_allocation_command = get_rman_allocation_command_archlog($destination);
+  my $bkup_errors  = trnstn_execute_backup($rman_backup_command, {rman_cfg => $rman_allocation_command, encrypt => "ON"});
+  if (@$bkup_errors) {
+    my $error_report = "$alerts{e} Cannot complete the Archivelogs Backup to ".uc($destination)." \n";
+      foreach (@$bkup_errors) {
+        $error_report = "${error_report}$_";
+      }
+    $LOG->logprt($error_report);
+    report_to_adminlogs($error_report);
+    $LOG->logerr({ errorinfo => { ID => "BKUP_EX_ARCHIVELOG_BACKUP_ERR", ARGS => [uc($destination),$logfile]}});
+  }  
+  $LOG->logprt("$alerts{i} End archivelog backup to OSS\n");
+}
+
+# Cleans up backed up archivelog from FRA.
+sub tnsntn_cleanup_fra {
+  $LOG->logprt("$alerts{i} Start cleanup of FRA \n");
+  my $destination = "disk";
+  unset_catalog();
+  my $rman_backup_command = ["DELETE NOPROMPT ARCHIVELOG ALL BACKED UP 2 TIMES TO SBT_TAPE COMPLETED BEFORE 'SYSDATE - $archivelog_win';"];
+  my $rman_allocation_command = get_rman_allocation_command_archlog($destination);
+  my $bkup_errors  = trnstn_execute_backup($rman_backup_command, {rman_cfg => $rman_allocation_command});
+  if (@$bkup_errors) {
+    my $error_report = "$alerts{e} Cannot complete the Archivelogs cleanup\n";
+    foreach (@$bkup_errors) {
+      $error_report = "${error_report}$_";
+    }
+    $LOG->logprt($error_report);
+    report_to_adminlogs($error_report);
+    $LOG->logerr({ errorinfo => { ID => "BKUP_EX_ARCHIVELOG_CLEANUP_ERR", ARGS => ["FRA",$logfile]}});
+  }
+  $LOG->logprt("$alerts{i} End cleanup of FRA \n");
+}
+
+# Wrapper for datafiles backed to oss/dbrs during transition.
+sub trnstn_datafile_backup {
+  $LOG->logprt("$alerts{i} Start datafile backup wrapper \n");
+  my $destination = lc($vars{'BKUP_TYPE'} || "none");
+  if ( $destination !~ m/oss|dbrs/i ) {
+    $LOG->logerr({ errorinfo => { ID => "BKUP_INVALID_DESTINATION", ARGS => ['OSS/DBRS',uc($destination)]}});
+  }
+  trnstn_datafile_backup_oss() if ( $destination eq "oss" );
+  trnstn_datafile_backup_dbrs() if ( $destination eq "dbrs" );
+  trnstn_cfg_file_backup();
+  $LOG->logprt("$alerts{i} End datafile backup wrapper \n");
+}
+
+# Takes datafiles level 0 backup to OSS.
+sub trnstn_datafile_backup_oss {
+  $LOG->logprt("$alerts{i} Start datafile backup to OSS \n");
+  my $destination = 'oss';
+  unset_catalog();
+  my $rman_allocation_command = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => $destination, tns_services => \@tns_services_list});
+  my $rman_backup_command = ["BACKUP SECTION SIZE $section_size DEVICE TYPE SBT AS $compression BACKUPSET INCREMENTAL LEVEL 0 FORCE DATABASE TAG '$OBKUP_FULL_UNIQ' FORMAT $format;"];
+  my $bkup_errors  = trnstn_execute_backup($rman_backup_command, {rman_cfg => $rman_allocation_command, encrypt => "ON"});
+  if (@$bkup_errors) {
+    my $error_report = "$alerts{e} Cannot complete the Full backup to $destination \n";
+    foreach (@$bkup_errors) {
+      $error_report = "${error_report}$_";
+    }
+    $LOG->logprt($error_report);
+    report_to_adminlogs($error_report);
+    $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["Full backup","cloud storage", $logfile]}});
+  }
+  my ($last_l0_date,$exit_status) = $LOG->logexe("$DATE_PATH +%m%d%y");
+  $REG->set('last_level0_date',$last_l0_date);
+  $LOG->log("last_level0_date set to $last_l0_date\n");
+  $LOG->logprt("$alerts{i} End datafile backup to OSS \n");
+}
+
+# Takes datafiles level 0 backup to DBRS.
+sub trnstn_datafile_backup_dbrs {
+  $LOG->logprt("$alerts{i} Start datafile backup to DBRS \n");
+  my $destination = 'dbrs';
+  set_catalog_dbrs();
+  my $rman_allocation_command = $backup_handler->rman_config_common({dg_enabled => $dataguard_state, dg_mode => $dataguard_mode, bkp_type => $destination, tns_services => \@tns_services_list});
+  my $rman_backup_command = ["BACKUP DEVICE TYPE SBT AS BACKUPSET CUMULATIVE INCREMENTAL LEVEL 0 FORCE TAG '$OBKUP_FULL_UNIQ' FILESPERSET $filesperset_regular SECTION SIZE $section_size DATABASE;"];
+  my $bkup_errors  = trnstn_execute_backup($rman_backup_command, {rman_cfg => $rman_allocation_command, encrypt => "OFF"});
+  if (@$bkup_errors) {
+    my $error_report = "$alerts{e} Cannot complete the Full backup to $destination \n";
+    foreach (@$bkup_errors) {
+      $error_report = "${error_report}$_";
+    }
+    $LOG->logprt($error_report);
+    report_to_adminlogs($error_report);
+    $LOG->logerr({ errorinfo => { ID => "BKUP_EX_BACKUP_OP_ERR", ARGS => ["Full backup", $destination, $logfile]}});
+  }
+  $LOG->logprt("$alerts{i} End datafile backup to DBRS \n");
+}
+
+
+# Backup of cgf files with data file backup during transition.
+sub trnstn_cfg_file_backup {
+  $cfg_bkup{'MODE'} = "tde" if ( $vars{"BKUP_CFG_FILES"} ne "yes" );
+  if (cfg_main()) {
+    $LOG->logerr({ errorinfo => { ID => "BKUP_EX_CFG_FILES_BACKUP_ERR", ARGS => [$logfile]}});
+  }
+}
+
+
+sub unset_catalog {
+  $LOG->log("Unset catalog in backup handler \n");
+  $backup_handler->set_mode("oss");
+  $backup_handler->set_catalog("no", "");
+}
+
+sub set_catalog_dbrs {
+  $LOG->log("Setting catalog in backup handler \n");
+  $backup_handler->set_mode("dbrs");
+  my $cat = "CATALOG /\@".$backup_handler->get_dbrs_tns_alias();
+  $backup_handler->set_catalog("yes", $cat);
+}
+
+
+sub trnstn_execute_backup {
+  my $instructions = shift;
+  $LOG->logerr({ errorinfo => { ID => "COMMON_MANDATORY_PARAMETERS_NOT_PROVIDED_ERR", ARGS => ["instructions", $logfile]}}) if (!defined $instructions);
+
+  my $opts = shift;
+  my $result = 0;
+  my $last_line;
+  
+  unshift (@$instructions, "set command id to '$uuid_cid';");
+  if (defined $opts->{rman_cfg}) { #Allocate channel etc rman before command
+        ## Check if this has run allocate channel , if so remove the last curly brace and add it after all the instructions are appended.
+        my @matches = grep { /allocate channel/i } @{$opts->{rman_cfg}};
+        if (@matches) {
+          #the last line should be }
+          $last_line = pop(@{$opts->{rman_cfg}});
+          for my $rman_instruction (@$instructions) {
+            #BACKUP ... DEVICE TYPE is supported only when automatic channels are used, we need to remove this when we allocate channels
+            #BACKUP ... DEVICE TYPE is supported only when automatic channels are used, we need to remove this when we allocate channels
+            # FORMAT FOR DEVICE TYPE SBT is ok and should not be replaced
+            if (($rman_instruction =~ m/BACKUP(.*)DEVICE TYPE (SBT|DISK)/i) && ($rman_instruction !~ m/FORMAT FOR DEVICE TYPE (SBT|DISK)/i)) {
+              $rman_instruction  =~ s/ DEVICE TYPE (SBT|DISK)//i;
+            }
+          }
+        }
+        unshift (@$instructions, @{$opts->{rman_cfg}});
+        push(@$instructions, $last_line) if (defined $last_line);
+  }
+  
+  if (defined $opts->{encrypt}) {
+    unshift (@$instructions, "SET ENCRYPTION $opts->{encrypt};");
+  }
+
+  for my $instruction (@$instructions){
+      my $print_ins = $instruction;
+      $print_ins =~ s/CONNECT '\S+'/CONNECT '*'/;
+      $LOG->logprt(" -> $print_ins\n");
+  }
+ 
+  push(@{$opts->{rman_cfg}}, $last_line) if (defined $last_line);
+  unshift (@$instructions, "show all;");
+
+  my ($out, $err) = $backup_handler->rman($instructions);
+  $LOG->logprt(" ->  RMAN OUTPUT:\n");
+  foreach (@$out){
+      $LOG->logprt("      $_\n");
+  }
+
+  # - Verifying if the step was successful
+  $LOG->logprt(" -> Scanning Obkup Log for Errors: \n");
+  $result = $backup_handler->obkup_errors($out);
+  return $result; 
+}
+
+sub cleanup_fra {
+   if ( $dataguard_mode =~ m/STANDBY/i ) {
+     cleanup_standby_fra();
+   }
+   $LOG->logprt("$alerts{i} CLEANING UP THE ARCHIVELOGS OLDER THAN 1 DAY FROM FRA.\n");
+   my $bkup_errors = execute_backup($rman_bkup_archivelog_cleanup);
+   if (@$bkup_errors) {
+     my $error_report = "$alerts{e} Cannot complete the Archivelogs cleanup\n";
+     foreach (@$bkup_errors) {
+       $error_report = "${error_report}$_";
+     }
+     $LOG->logprt($error_report);
+     report_to_adminlogs($error_report);
+     $LOG->logerr({ errorinfo => { ID => "BKUP_EX_ARCHIVELOG_CLEANUP_ERR", ARGS => ["FRA",$logfile]}});
+   }
+}
+
+sub cleanup_standby_fra{
+   if ($archivelog eq "yes"){
+       $backup_handler->cleanup_applied_archives();
+   }
+   $LOG->logprt("$alerts{i} Skipping backup as this instance is on STANDBY mode.\n");
+   exit 0;
+}
+
+sub backup_tde_wallet(){
+        # Backup only TDE
+        enforce_tde_ks_loc_population();
+        if (-e "$cfg_bkup{'TDE_KS_LOC'}" ){
+            my $tarcmd = "$TAR_PATH -pzcf $cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz $cfg_bkup{'TDE_KS_LOC'}";
+            my ($out_tarcmd,$err_tarcmd)=$LOG->logexe($tarcmd,{runas=>"oracle"});
+            $LOG->logerr({ errorinfo => { ID => "COMMON_CMD_EXECUTION_ERR", ARGS => [$tarcmd,$logfile], EXIT_ON_FATAL => 1 }}) if ($err_tarcmd);
+            $tarball_names{'TDE'} = "$cfg_bkup{'BKP_LOC'}/$cfg_bkup{'OH_CFG_DIR'}/$cfg_bkup{'BKP_DATE'}/ohcfgfiles_$cfg_bkup{'BKP_TIMESTAMP'}.tar.gz";
+        }else{
+            $LOG->logprt("alerts{w} Cannot create tarball. target file doesn't exit: $cfg_bkup{'TDE_KS_LOC'} \n");
+            return 0;
+        }
+        $LOG->logprt("$alerts{i} .... OK\n");
+        return 1;
+}

@@ -1,0 +1,57 @@
+#!/bin/bash 
+export OKV_RESTCLI_DIR=$(dirname "${0}")/..
+#export OKV_RESTCLI_CONFIG=$OKV_RESTCLI_DIR/conf/okvrestcli.ini
+if [ -z "$JAVA_HOME" ]
+then
+  echo "JAVA_HOME environment variable is not set."
+  exit 1
+fi
+
+if [ -z "$OKV_RESTCLI_CONFIG" ]
+then
+  echo "OKV_RESTCLI_CONFIG environment variable is not set."
+  exit 1
+fi
+
+export OKV_RESTCLI_JAR=$OKV_RESTCLI_DIR/lib/okvrestcli.jar
+
+# CHECK IF THE JAVA VERSION IS HIGHER OR EQUAL TO THE REQUIRED VERSION
+#
+
+if [ -f "$JAVA_HOME/bin/java" ]; then
+  JAVA_EXE=$JAVA_HOME/bin/java
+else
+  $ECHO "The JAVA_HOME environment variable must point to a valid JDK/JRE installation."
+  exit 1
+fi
+
+REQUIRED_MAJOR_VERSION="1"
+REQUIRED_MINOR_VERSION="7"
+
+CURRENT_JAVA_VERSION=$(${JAVA_EXE} -version 2>&1)
+CURRENT_JAVA_VERSION=(${CURRENT_JAVA_VERSION[@]})
+CURRENT_JAVA_VERSION=${CURRENT_JAVA_VERSION[2]}
+CURRENT_JAVA_VERSION=(${CURRENT_JAVA_VERSION//'"'})
+CURRENT_JAVA_VERSION_ARR=(${CURRENT_JAVA_VERSION//./ })
+
+MAJOR=${CURRENT_JAVA_VERSION_ARR[0]}
+MINOR=${CURRENT_JAVA_VERSION_ARR[1]}
+
+if [ -z "$MAJOR" ]; then
+  echo "Error: Unable to get current installed JDK/JRE version."
+  exit 1
+fi
+
+
+# Check if the current version conforms to the minimum required
+# 
+if [ "$MAJOR" -lt "$REQUIRED_MAJOR_VERSION" ] ||
+   ([ "$MAJOR" -eq "$REQUIRED_MAJOR_VERSION" ] && 
+    [ ! -z $MINOR ] &&
+    [ "$MINOR" -lt "$REQUIRED_MINOR_VERSION" ]); then
+  echo "Unsupported JDK/JRE version - $CURRENT_JAVA_VERSION is installed."
+  echo "Need JDK/JRE version 1.7.21 or higher."
+  exit 1
+fi
+
+$JAVA_EXE -jar $OKV_RESTCLI_JAR "$@"
