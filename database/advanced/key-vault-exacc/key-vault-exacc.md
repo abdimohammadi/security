@@ -91,7 +91,7 @@ The assumption is that the network routing between the ExaCC subnet deployed on 
 
 2.3 Allow RESTfull Services from IP Addresses 
 
-![Key Vault](exacc-images/OO-06-OKV_RESTService-_AllowedIP.png "OKV Allow Source IP")
+![Key Vault](exacc-images/O-06-OKV_RESTService-_AllowedIP.png "OKV Allow Source IP")
 
 2.4 Create a REST API user and grant access permissions
 
