@@ -113,7 +113,7 @@ The password of the OKV REST ADMIN user needs to be stored in a secret within an
 
 ![Key Vault](exacc-images/09-OCI_Vault-1.png "Create Vault")
 
-3.2 Create a Secret "OKVpwdo" in the OCI Vault 
+3.2 Create a Secret "OKVpwd0" in the OCI Vault 
 
 ![Key Vault](exacc-images/11-OCI_Vault-Secret-1.png "Create Secret")
 
